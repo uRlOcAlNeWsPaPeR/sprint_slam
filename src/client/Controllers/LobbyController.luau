@@ -24,6 +24,7 @@ local lobby: any = nil
 local interactables: Interactables.Interactables? = nil
 local previousPosition: Vector3? = nil
 local lastEnterRequest = -math.huge
+local inPortal = false
 local current: { index: number, phase: string, startedAt: number, finishedTime: number? }? = nil
 local bests: { [string]: number } = {}
 local halo: Model? = nil
@@ -57,6 +58,11 @@ function LobbyController.reset()
 	end
 	previousPosition = nil
 	current = nil
+	inPortal = false
+end
+
+function LobbyController.getLobby(): any
+	return lobby
 end
 
 function LobbyController.forgetPosition()
@@ -126,15 +132,23 @@ local function updateChallenges(position: Vector3)
 end
 
 local function updatePortals(position: Vector3)
+	local wasInPortal = inPortal
+	inPortal = false
 	for _, portal in lobby.Portals do
 		if portal.Active and Geometry.pointInBox(position, portal.Trigger.CFrame, portal.Trigger.Size) then
+			inPortal = true
 			local t = os.clock()
-			if t - lastEnterRequest >= ENTER_RETRY then
+			if not wasInPortal and t - lastEnterRequest >= ENTER_RETRY then
 				lastEnterRequest = t
 				LobbyController.EnterRequested:Fire(portal.Mode)
 			end
 		end
 	end
+end
+
+-- True while standing in an active portal (the level select stays open only then).
+function LobbyController.isInPortal(): boolean
+	return inPortal
 end
 
 -- Per-frame checks while the player is in the hub.

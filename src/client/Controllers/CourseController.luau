@@ -1,24 +1,31 @@
 --!strict
 -- Client side of the Sprint Slam course: pads, rings and moving obstacles (via
--- Interactables), plus the kill plane, course progress and the launch lip.
+-- Interactables), level hazards (via Hazards), the kill plane, progress and the launch lip.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
+local Config = require(Shared.Config)
 local Geometry = require(Shared.Geometry)
 local Signal = require(Shared.Signal)
 
+local CameraController = require(script.Parent.CameraController)
+local EffectsController = require(script.Parent.EffectsController)
+local Hazards = require(script.Parent.Hazards)
 local Interactables = require(script.Parent.Interactables)
+local MovementController = require(script.Parent.MovementController)
 
 local CourseController = {}
 
 CourseController.Combo = Signal.new()
 CourseController.Launched = Signal.new()
 CourseController.FellOut = Signal.new()
+CourseController.Zapped = Signal.new() -- touched a death block or live laser
 
 local course: any = nil
 local path: Geometry.PathInfo? = nil
 local interactables: Interactables.Interactables? = nil
+local hazards: Hazards.Hazards? = nil
 local previousPosition: Vector3? = nil
 local progressDistance = 0
 
@@ -29,9 +36,24 @@ end
 function CourseController.init(activeCourse: any)
 	course = activeCourse
 	path = Geometry.buildPath(course.Path)
-	interactables = Interactables.new(course, workspace:WaitForChild("Course"), function(eventType)
+	local root = workspace:WaitForChild("Course")
+	interactables = Interactables.new(course, root, function(eventType)
 		CourseController.Combo:Fire(eventType)
 	end)
+	hazards = Hazards.new(course, root)
+end
+
+function CourseController.setLevel(level: number)
+	if interactables then
+		interactables:setLevel(level)
+	end
+	if hazards then
+		hazards:setLevel(level)
+	end
+end
+
+function CourseController.getHazards(): Hazards.Hazards?
+	return hazards
 end
 
 function CourseController.getCourse(): any
@@ -47,8 +69,12 @@ function CourseController.resetRun()
 end
 
 function CourseController.animate()
+	local t = now()
 	if interactables then
-		interactables:animate(now())
+		interactables:animate(t)
+	end
+	if hazards then
+		hazards:animate(t)
 	end
 end
 
@@ -76,8 +102,21 @@ function CourseController.update(root: BasePart)
 		return
 	end
 
+	local t = now()
+	if hazards then
+		local contact, push = hazards:check(position, t)
+		if contact == "Kill" then
+			previousPosition = nil
+			CourseController.Zapped:Fire()
+			return
+		elseif contact == "Bonk" and push then
+			MovementController.bonk(push)
+			CameraController.shake(0.5)
+			EffectsController.burst(Config.Palette.Orange, 18)
+		end
+	end
 	if interactables then
-		interactables:update(root, previous, now())
+		interactables:update(root, previous, t)
 	end
 
 	if path then

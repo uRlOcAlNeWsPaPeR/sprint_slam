@@ -173,6 +173,8 @@ Config.Validation = {
 	ImpactWait = 1.0, -- seconds to wait for the other half (claim / server detection)
 	ImpactExtrapolate = 30, -- max studs the server will extrapolate to the plane (~2 samples at top speed)
 	RespawnTolerance = 25,
+	TeleportSettle = 0.3, -- seconds a teleport target must hold before checks resume
+	HazardSamplesToInvalidate = 3, -- consecutive samples inside a lethal hazard
 	NearDistance = 16,
 	NearLookback = 0.8,
 }
@@ -200,6 +202,8 @@ Config.Palette = {
 	White = Color3.fromRGB(242, 245, 250),
 	Muted = Color3.fromRGB(130, 140, 160),
 	Hazard = Color3.fromRGB(235, 238, 245),
+	Danger = Color3.fromRGB(255, 40, 80), -- death blocks and lasers
+	Blink = Color3.fromRGB(170, 90, 255), -- blink floors
 }
 
 -- Fill in audio asset ids to enable sounds; empty ids are skipped silently.

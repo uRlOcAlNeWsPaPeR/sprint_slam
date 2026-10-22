@@ -94,6 +94,9 @@ function BuildKit.platforms(defs: { any }?, parent: Instance)
 	for _, def in defs or {} do
 		local color = if def.Style == "FloorAlt" then Palette.FloorAlt elseif def.Style == "Beam" then Palette.Panel else Palette.Floor
 		local slab = BuildKit.part({ Name = def.Name, CFrame = def.CFrame, Size = def.Size, Color = color, Parent = parent })
+		if def.UntilLevel then
+			slab:SetAttribute("UntilLevel", def.UntilLevel) -- clients hide it on later levels
+		end
 		local top = def.Size.Y / 2 + 0.05
 		local edgeColor = if def.Style == "Beam" then Palette.Orange else Palette.Cyan
 		local alongX = def.EdgeAxis == "X"
@@ -248,6 +251,9 @@ function BuildKit.obstacles(defs: { any }?, parent: Instance)
 			CanQuery = false,
 			Parent = obstacles,
 		})
+		if def.UntilLevel then
+			block:SetAttribute("UntilLevel", def.UntilLevel)
+		end
 		local highlight = Instance.new("Highlight")
 		highlight.FillTransparency = 1
 		highlight.OutlineColor = Palette.Orange

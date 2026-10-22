@@ -43,6 +43,9 @@ local resultDeadline: number? = nil
 local resultsShownAt = 0
 local pendingResult: any = nil
 local course: any = nil
+local level = 1
+local unlockedLevel = 1
+local levelBests: { [string]: number } = {}
 local remotes: { [string]: RemoteEvent } = {}
 
 local function now(): number
@@ -56,6 +59,9 @@ end
 local function enterCountdown()
 	SlamController.cleanup()
 	MovementController.setEnabled(false)
+	-- Always start on the line at rest: entering from the pit (next level) or the hub would
+	-- otherwise carry leftover velocity into the countdown and read as a false start.
+	MovementController.teleport(course.Spawn)
 	MovementController.reset()
 	DashController.reset()
 	InputController.setMovementEnabled(false)
@@ -68,7 +74,11 @@ local function enterCountdown()
 	pendingResult = nil
 	resultDeadline = nil
 	UIController.resetRun()
+	CourseController.setLevel(level)
+	DevAutopilot.setLevel(level)
+	UIController.setRunLabel(level, course.Levels[level])
 	UIController.setMode("Run")
+	UIController.showLevelIntro(level, course.Levels[level])
 	DevAutopilot.reset()
 	UIController.showCountdown(goTime)
 	setState("Countdown")
@@ -101,6 +111,9 @@ local function onRunState(payload: any)
 	roundTime = payload.RoundTime
 	UIController.setBest(payload.BestScore)
 	UIController.setCoins(payload.CoinBalance)
+	level = payload.Level or level
+	unlockedLevel = payload.UnlockedLevel or unlockedLevel
+	levelBests = payload.LevelBests or levelBests
 	if payload.State == "Countdown" and isNewRun then
 		enterCountdown()
 	elseif payload.State == "Lobby" and state ~= "Lobby" then
@@ -128,11 +141,12 @@ local function showResult(payload: any)
 	resultsShownAt = os.clock()
 	local b = payload.Breakdown or {}
 	DevAutopilot.log(string.format(
-		"result: %s reason=%s momentum=%s impact=%s power=%s zone=%s time=+%s combo=+%s final=%s coins=+%s best=%s",
-		tostring(b.Outcome), tostring(payload.Reason), tostring(b.Momentum), tostring(b.ImpactSpeed),
+		"result L%s: %s reason=%s momentum=%s impact=%s power=%s zone=%s time=+%s combo=+%s final=%s coins=+%s best=%s",
+		tostring(payload.Level), tostring(b.Outcome), tostring(payload.Reason), tostring(b.Momentum), tostring(b.ImpactSpeed),
 		tostring(b.ImpactPower), tostring(b.Zone), tostring(b.TimeBonus), tostring(b.ComboBonus),
 		tostring(b.Final), tostring(payload.Coins), tostring(payload.BestScore)
 	))
+	unlockedLevel = payload.UnlockedLevel or unlockedLevel
 	UIController.setFlight(false)
 	UIController.showResults(payload)
 	UIController.setBest(payload.BestScore)
@@ -189,10 +203,40 @@ function RunController.restart()
 	remotes.RequestRestart:FireServer()
 end
 
+-- Start (or switch to) a Sprint Slam level; the server checks it is unlocked.
+function RunController.chooseLevel(chosen: number)
+	if chosen > unlockedLevel or chosen > #course.Levels then
+		UIController.toast("LOCKED - CLEAR LEVEL " .. tostring(chosen - 1) .. " FIRST", Config.Palette.Muted, 1.2)
+		return
+	end
+	if state == "Lobby" and not UIController.isLevelSelectOpen() then
+		return
+	end
+	UIController.hideLevelSelect()
+	remotes.RequestMode:FireServer("SprintSlam", chosen)
+end
+
+function RunController.nextLevel()
+	if state == "Results" and level < #course.Levels and unlockedLevel > level then
+		RunController.chooseLevel(level + 1)
+	end
+end
+
 function RunController.returnToLobby()
 	if state ~= "Lobby" and state ~= "Waiting" then
 		remotes.RequestMode:FireServer("Lobby")
 	end
+end
+
+local function zapped()
+	local respawnAt = course.Checkpoints[checkpoint].Respawn
+	MovementController.teleport(respawnAt)
+	CourseController.forgetPosition()
+	remotes.RequestRespawn:FireServer(runId)
+	CameraController.shake(0.6)
+	EffectsController.burst(Config.Palette.Danger, 30)
+	UIController.toast("ZAPPED!", Config.Palette.Danger, 0.8)
+	DevAutopilot.log(string.format("zapped; respawn at checkpoint %d", checkpoint))
 end
 
 local function respawn()
@@ -263,6 +307,9 @@ function RunController.update(dt: number)
 	if state == "Lobby" and root then
 		MovementController.update(dt)
 		LobbyController.update(root)
+		if UIController.isLevelSelectOpen() and not LobbyController.isInPortal() then
+			UIController.hideLevelSelect()
+		end
 	elseif state == "Running" and root then
 		MovementController.update(dt)
 		momentum:add(MovementController.getActualSpeed() * dt, dt)
@@ -282,7 +329,12 @@ function RunController.update(dt: number)
 	end
 
 	if state == "Results" and DevAutopilot.shouldLoop() and os.clock() - resultsShownAt > 3 then
-		RunController.restart()
+		if DevAutopilot.shouldAdvance() and level < #course.Levels and unlockedLevel > level then
+			resultsShownAt = math.huge -- one request per result
+			RunController.nextLevel()
+		else
+			RunController.restart()
+		end
 	end
 	if pendingResult and os.clock() >= impactAt + 1.1 then
 		showResult(pendingResult)
@@ -347,16 +399,26 @@ function RunController.init(activeCourse: any, activeLobby: any)
 	SlamController.Impact:Connect(onImpact)
 
 	LobbyController.EnterRequested:Connect(function(mode: string)
-		if state == "Lobby" then
-			remotes.RequestMode:FireServer(mode)
-			UIController.toast("ENTERING SPRINT SLAM", Config.Palette.Orange, 1.2)
+		if state == "Lobby" and mode == "SprintSlam" then
+			UIController.showLevelSelect(unlockedLevel, levelBests)
 		end
 	end)
+	UIController.LevelChosen:Connect(RunController.chooseLevel)
+	InputController.LevelKey:Connect(function(chosen: number)
+		if UIController.isLevelSelectOpen() then
+			RunController.chooseLevel(chosen)
+		end
+	end)
+	UIController.NextLevelClicked:Connect(RunController.nextLevel)
+	InputController.NextLevel:Connect(RunController.nextLevel)
+	CourseController.Zapped:Connect(zapped)
 	LobbyController.FellOut:Connect(function(respawnAt: CFrame, challengeName: string?)
 		MovementController.teleport(respawnAt)
 		CameraController.shake(0.25)
 		if challengeName then
 			UIController.toast(challengeName .. "  -  TRY AGAIN", Config.Palette.Orange, 1)
+			DevAutopilot.log("challenge " .. challengeName .. ": fell, retrying")
+			DevAutopilot.restartRoute()
 		end
 	end)
 	LobbyController.ChallengeFinished:Connect(function(name: string, time: number, best: number, isBest: boolean)
@@ -367,6 +429,7 @@ function RunController.init(activeCourse: any, activeLobby: any)
 			text ..= string.format("  (BEST %.2fs)", best)
 		end
 		UIController.toast(text, if isBest then Config.Palette.Orange else Config.Palette.Cyan, 2.5)
+		DevAutopilot.log(string.format("challenge %s finished in %.2fs", name, time))
 		CameraController.shake(0.2)
 		EffectsController.burst(Config.Palette.Orange, 30)
 	end)

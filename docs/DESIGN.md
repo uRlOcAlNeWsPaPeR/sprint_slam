@@ -184,7 +184,27 @@ effects, poses, auras. `TeamService` scores teams from each member's best verifi
 `DailyChallengeService`: UTC day index → seeded selection among validated templates, plus safe
 parameter variation. Countdown to 00:00 UTC, practice mode for past courses (unranked).
 
-## 6. The Hub
+## 6. Levels
+
+Levels reuse the Neon Rush layout and stack one new hazard type per level (data in
+`Courses/NeonRush.luau`, timing in `Shared/HazardMath.luau`):
+
+| Level | Name | New hazard | Rule |
+|---|---|---|---|
+| 1 | Neon Rush | - | base course |
+| 2 | Danger Zone | Death blocks | touch = respawn at last checkpoint; each leaves an 8+ stud lane |
+| 3 | Laser Grid | Laser gates | lethal while lit; dark ≥ 0.9 s per cycle; jumpable |
+| 4 | Spin Cycle | Spinners | feet-high rotating bars; contact knocks you away |
+| 5 | Blink Out | Blink floors | S-bend floor lit in a wave at 50 st/s; ride it at 40-70 |
+
+Hazards for every level are built once. Each client shows and collides with only its own
+level's set, so players on different levels share one world. The server rejects runs that
+sit inside a death block or live laser for 3+ samples. Any verified slam unlocks the next
+level (`ProgressService`, DataStore-backed). `src/tests/Levels.spec` checks that every level
+and hub challenge is beatable with the game's own jump physics and hazard timing, and that
+no checkpoint respawns you on a hazard.
+
+## 7. The Hub
 
 Players spawn in THE HUB, a floating plaza. A run starts only by walking into the Sprint Slam
 portal: the client asks, and the server checks that the player really is at the portal
@@ -197,7 +217,7 @@ respawn and a fail line. The timer starts when you leave the start box. Falling 
 fail line returns you to the start, and walking back onto the plaza cancels the attempt.
 Times are client-side session bests for now; leaderboards come with Phase 3.
 
-## 7. Controls (Phase 1)
+## 8. Controls (Phase 1)
 
 | Action | Keyboard | Gamepad | Touch |
 |---|---|---|---|

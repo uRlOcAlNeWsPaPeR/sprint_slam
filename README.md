@@ -9,6 +9,14 @@ The full concept analysis, technical challenges, architecture and phased roadmap
 
 ## Status
 
+**Levels 1-5.** Sprint Slam has five levels on the Neon Rush layout. Each one adds a new
+obstacle on top of the last: **Danger Zone** (death blocks: touch one and you respawn at the
+last checkpoint), **Laser Grid** (laser gates that blink on and off), **Spin Cycle** (floor
+spinners that knock you away) and **Blink Out** (the S-bend floor turns on and off in a wave
+you have to ride at about 50 st/s). The portal opens a level select. Any verified slam
+unlocks the next level, and NEXT LEVEL (or **N**) jumps straight there. Unlocks are saved in
+published places.
+
 **The Hub (lobby).** Every player spawns in a floating neon hub. Walk into the **Sprint Slam**
 portal to start a run, and press **L** (or the HUB button) to come back. Two locked portals
 are ready for future modes. Around the plaza are three timed parkour challenges that use the
@@ -58,6 +66,8 @@ It switches HTTP on only for the fetch. With [Rojo](https://rojo.space) installe
 | Slide | Ctrl or C | B | SLIDE |
 | Restart run / restart challenge | R | Y | RESTART |
 | Back to the hub | L | Select | HUB |
+| Pick a level (in the portal) | 1-5 | - | tap a level |
+| Next level (results) | N | - | NEXT |
 
 ## Tuning
 
@@ -73,7 +83,13 @@ launch, impact and the server's verdict:
 ```lua
 game.Players.LocalPlayer:SetAttribute("Autopilot", true)
 game.Players.LocalPlayer:SetAttribute("AutopilotLoop", true) -- optional: restart after each result
+game.Players.LocalPlayer:SetAttribute("AutopilotAdvance", true) -- with Loop: go on through levels 1-5
+game.Players.LocalPlayer:SetAttribute("AutopilotChallenge", "SKY TOWER") -- or run a hub challenge
 ```
+
+The bot completed every hub challenge (Dash Gaps 2.3 s, Beam Run 4.5 s, Sky Tower 6.9 s)
+and chained levels 1-5 with verified bullseyes. Keep the Studio window visible while it
+runs: Studio pauses rendering for hidden windows.
 
 ## Tests
 

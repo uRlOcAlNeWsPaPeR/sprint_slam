@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Geometry = require(Shared.Geometry)
+local HazardMath = require(Shared.HazardMath)
 
 local V = Config.Validation
 
@@ -35,7 +36,10 @@ export type RunValidator = typeof(setmetatable(
 		shortcutsHit: { [string]: boolean },
 		expectNear: { Vector3 }?,
 		runDistance: number,
+		level: number,
+		insideHazard: number,
 		expectDeadline: number,
+		settledSince: number?,
 	},
 	RunValidator
 ))
@@ -49,8 +53,11 @@ function RunValidator.new(course: any): RunValidator
 		nextCheckpoint = 2,
 		shortcutsHit = {},
 		runDistance = 0,
+		level = 1,
+		insideHazard = 0,
 		expectNear = nil,
 		expectDeadline = 0,
+		settledSince = nil,
 	}, RunValidator)
 	return self
 end
@@ -62,7 +69,27 @@ function RunValidator.reset(self: RunValidator)
 	self.nextCheckpoint = 2
 	table.clear(self.shortcutsHit)
 	self.runDistance = 0
+	self.insideHazard = 0
 	self.expectNear = nil
+end
+
+function RunValidator.setLevel(self: RunValidator, level: number)
+	self.level = level
+end
+
+-- Is the root inside a lethal hazard's core (death block, or a live laser)? An honest client
+-- respawns the instant it touches one, so the server only ever sees a sample or two inside.
+function RunValidator.insideLethal(self: RunValidator, position: Vector3, t: number): boolean
+	for _, def in self.course.Hazards or {} do
+		if HazardMath.activeForLevel(def, self.level) then
+			if def.Type == "Kill" or (def.Type == "Laser" and HazardMath.isOn(def, t)) then
+				if Geometry.pointInBox(position, def.CFrame, def.Size) then
+					return true
+				end
+			end
+		end
+	end
+	return false
 end
 
 function RunValidator.invalidate(self: RunValidator, reason: string)
@@ -73,9 +100,13 @@ end
 
 -- The client teleports itself (restart/respawn). Until a sample lands near one of these
 -- points we skip motion checks; if none does before the deadline the run is invalid.
+-- The teleport only counts once samples have stayed near a target for TeleportSettle
+-- seconds: right after a server-side teleport the owning client can still send a frame or
+-- two from where it was, and those must not read as a false start.
 function RunValidator.expectTeleport(self: RunValidator, positions: { Vector3 }, now: number)
 	self.expectNear = positions
 	self.expectDeadline = now + 2.5
+	self.settledSince = nil
 	table.clear(self.samples)
 end
 
@@ -135,6 +166,7 @@ function RunValidator.sample(self: RunValidator, now: number, position: Vector3,
 	local events: { Event } = {}
 
 	if self.expectNear then
+		self.insideHazard = 0
 		local arrived = false
 		for _, point in self.expectNear do
 			if (position - point).Magnitude <= V.RespawnTolerance then
@@ -143,6 +175,11 @@ function RunValidator.sample(self: RunValidator, now: number, position: Vector3,
 			end
 		end
 		if arrived then
+			self.settledSince = self.settledSince or now
+		else
+			self.settledSince = nil
+		end
+		if arrived and now - (self.settledSince :: number) >= V.TeleportSettle then
 			self.expectNear = nil
 			table.clear(self.samples)
 		else
@@ -190,6 +227,15 @@ function RunValidator.sample(self: RunValidator, now: number, position: Vector3,
 		-- teleports never count because the sample history is cleared around them.
 		local step = horizontal(position - previous.p).Magnitude
 		self.runDistance += math.min(step, V.MaxRunSpeed * (now - previous.t))
+
+		if self:insideLethal(position, now) then
+			self.insideHazard += 1
+			if self.insideHazard >= V.HazardSamplesToInvalidate then
+				self:invalidate("ignored a hazard")
+			end
+		else
+			self.insideHazard = 0
+		end
 
 		local gate = course.Checkpoints[self.nextCheckpoint]
 		if gate and Geometry.segmentIntersectsBox(previous.p, position, gate.CFrame, gate.Size) then

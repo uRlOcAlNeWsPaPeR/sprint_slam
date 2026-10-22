@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Courses = require(Shared.Courses)
+local HazardMath = require(Shared.HazardMath)
 
 local BuildKit = require(script.Parent.BuildKit)
 
@@ -27,6 +28,56 @@ local function buildCourseMarkings(course: any, parent: Instance)
 		if index > 1 then
 			neon(gates, def.CFrame, Vector3.new(def.Size.X, def.Size.Y, 0.2), Palette.Cyan, 0.93)
 		end
+	end
+end
+
+-- Level hazards are built once for every level; each client shows only its own level's
+-- (Level / UntilLevel attributes) and animates them from server time.
+local function buildHazards(course: any, parent: Instance)
+	local hazards = folder("Hazards", parent)
+	for index, def in course.Hazards or {} do
+		local model = Instance.new("Model")
+		model.Name = "Hazard" .. index
+		model:SetAttribute("Type", def.Type)
+		model:SetAttribute("Level", def.Level or 1)
+		if def.UntilLevel then
+			model:SetAttribute("UntilLevel", def.UntilLevel)
+		end
+		local main: BasePart
+		if def.Type == "Kill" then
+			main = decor({ Name = "Main", CFrame = def.CFrame, Size = def.Size, Color = Palette.Danger, Material = Enum.Material.Neon, Transparency = 0.1, Parent = model })
+			-- A dark core with glowing edges reads as "do not touch" from a distance.
+			decor({ Name = "Core", CFrame = def.CFrame, Size = def.Size - Vector3.new(0.6, 0.6, 0.6), Color = Palette.Charcoal, Parent = model })
+			local light = Instance.new("PointLight")
+			light.Color = Palette.Danger
+			light.Range = 14
+			light.Brightness = 2
+			light.Parent = main
+		elseif def.Type == "Laser" then
+			main = decor({ Name = "Main", CFrame = def.CFrame, Size = def.Size, Color = Palette.Danger, Material = Enum.Material.Neon, Transparency = 0.15, Parent = model })
+			for _, side in { -1, 1 } do
+				local post = def.CFrame * CFrame.new(side * (def.Size.X / 2 + 0.6), 0, 0)
+				part({ Name = "Emitter", CFrame = post, Size = Vector3.new(1.2, def.Size.Y + 2, 1.2), Color = Palette.Panel, Parent = model })
+				neon(model, post * CFrame.new(0, (def.Size.Y + 2) / 2 + 0.15, 0), Vector3.new(1.3, 0.3, 1.3), Palette.Danger)
+			end
+		elseif def.Type == "Spinner" then
+			local cf = HazardMath.spinnerCFrame(def, 0)
+			main = decor({ Name = "Main", CFrame = cf, Size = HazardMath.spinnerSize(def), Color = Palette.Orange, Material = Enum.Material.Neon, Parent = model })
+			decor({
+				Name = "Hub",
+				Shape = Enum.PartType.Cylinder,
+				CFrame = CFrame.new(def.Center + Vector3.new(0, def.Height, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+				Size = Vector3.new(def.Height * 2 + 0.6, 3, 3),
+				Color = Palette.Panel,
+				Parent = model,
+			})
+		elseif def.Type == "Blink" then
+			main = part({ Name = "Main", CFrame = def.CFrame, Size = def.Size, Color = Palette.Blink, Material = Enum.Material.Neon, Transparency = 0.3, Parent = model })
+		else
+			continue
+		end
+		model.PrimaryPart = main
+		model.Parent = hazards
 	end
 end
 
@@ -126,6 +177,7 @@ function CourseManager.build(courseId: string?, options: { Preview: boolean? }?)
 	BuildKit.arches(course.Arches, decorFolder)
 	BuildKit.signs(course.Signs, decorFolder)
 	buildCourseMarkings(course, root)
+	buildHazards(course, root)
 	buildTarget(course, root)
 	root:SetAttribute("CourseId", course.Id)
 	if preview then

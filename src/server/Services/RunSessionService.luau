@@ -13,6 +13,7 @@ local ComboTracker = require(Shared.ComboTracker)
 local Net = require(Shared.Net)
 local ScoreFormula = require(Shared.ScoreFormula)
 
+local ProgressService = require(script.Parent.ProgressService)
 local RunValidator = require(script.Parent.RunValidator)
 local ScoreService = require(script.Parent.ScoreService)
 local WalletService = require(script.Parent.WalletService)
@@ -25,6 +26,7 @@ type Session = {
 	player: Player,
 	course: any,
 	runId: number,
+	level: number,
 	state: string, -- "Idle" | "Lobby" | "Countdown" | "Running" | "Flight" | "Finished"
 	goTime: number,
 	validator: RunValidator.RunValidator,
@@ -61,10 +63,13 @@ local function rootOf(player: Player): BasePart?
 end
 
 local function sendState(session: Session)
-	local best = ScoreService.getBest(session.player)
+	local best = ScoreService.getBest(session.player, session.level)
 	remotes.RunState:FireClient(session.player, {
 		RunId = session.runId,
 		State = session.state,
+		Level = session.level,
+		UnlockedLevel = ProgressService.get(session.player),
+		LevelBests = ScoreService.levelBests(session.player, #course.Levels),
 		GoTime = session.goTime,
 		RoundTime = Config.Round.RoundTime,
 		Checkpoint = session.checkpoint,
@@ -80,6 +85,7 @@ local function startCountdown(session: Session, seconds: number, serverTeleport:
 	session.state = "Countdown"
 	session.goTime = t + seconds
 	session.validator:reset()
+	session.validator:setLevel(session.level)
 	session.combo = ComboTracker.new(Config.Combo.ServerWindowSlack)
 	session.checkpoint = 1
 	session.splits = {}
@@ -131,12 +137,17 @@ local function finish(session: Session, breakdown: ScoreFormula.Breakdown, reaso
 	session.resolveDeadline = nil
 	local isNewBest = false
 	local coins = 0
+	local unlockedNow = nil
 	if not reason and breakdown.Outcome == "Impact" then
-		isNewBest = ScoreService.recordRun(session.player, breakdown, session.splits)
+		isNewBest = ScoreService.recordRun(session.player, session.level, breakdown, session.splits)
 		coins = breakdown.Coins
 		WalletService.award(session.player, coins)
+		-- Any verified slam clears the level and unlocks the next one.
+		if session.level < #course.Levels and ProgressService.unlock(session.player, session.level + 1) then
+			unlockedNow = session.level + 1
+		end
 	end
-	local best = ScoreService.getBest(session.player)
+	local best = ScoreService.getBest(session.player, session.level)
 	remotes.RunResult:FireClient(session.player, {
 		RunId = session.runId,
 		Breakdown = breakdown,
@@ -145,6 +156,9 @@ local function finish(session: Session, breakdown: ScoreFormula.Breakdown, reaso
 		BestScore = if best then best.Score else nil,
 		Coins = coins,
 		CoinBalance = WalletService.get(session.player),
+		Level = session.level,
+		UnlockedLevel = ProgressService.get(session.player),
+		NewlyUnlocked = unlockedNow,
 	})
 	sendState(session)
 end
@@ -194,7 +208,7 @@ local function handleEvent(session: Session, event: RunValidator.Event)
 		session.checkpoint = index
 		local split = event.Time - session.goTime
 		session.splits[index] = split
-		local best = ScoreService.getBest(session.player)
+		local best = ScoreService.getBest(session.player, session.level)
 		local bestSplit = best and best.Splits[index]
 		remotes.Checkpoint:FireClient(session.player, {
 			RunId = session.runId,
@@ -275,6 +289,7 @@ local function onPlayerAdded(player: Player)
 		player = player,
 		course = course,
 		runId = 0,
+		level = 1,
 		state = "Idle",
 		goTime = 0,
 		validator = RunValidator.new(course),
@@ -291,6 +306,7 @@ local function onPlayerAdded(player: Player)
 	sessions[player] = session
 	task.spawn(function()
 		WalletService.load(player)
+		ProgressService.load(player)
 		if sessions[player] == session and session.state ~= "Idle" then
 			sendState(session)
 		end
@@ -331,7 +347,7 @@ local function connectRemotes()
 		startCountdown(session, Config.Round.RestartCountdownSeconds, false)
 	end)
 
-	remotes.RequestMode.OnServerEvent:Connect(function(player: Player, mode: any)
+	remotes.RequestMode.OnServerEvent:Connect(function(player: Player, mode: any, level: any)
 		local session = sessions[player]
 		if not session or typeof(mode) ~= "string" or not rootOf(player) then
 			return
@@ -341,7 +357,14 @@ local function connectRemotes()
 				enterLobby(session)
 			end
 		elseif mode == "SprintSlam" then
-			if session.state == "Lobby" and nearPortal(player, mode) then
+			-- Only unlocked levels; from the hub you must be standing at the portal, while
+			-- already in Sprint Slam (e.g. "next level" on the results screen) you may switch.
+			if typeof(level) ~= "number" or level % 1 ~= 0 or level < 1 or level > ProgressService.get(player) or level > #course.Levels then
+				return
+			end
+			local inMode = session.state ~= "Lobby" and session.state ~= "Idle"
+			if inMode or (session.state == "Lobby" and nearPortal(player, mode)) then
+				session.level = level
 				startCountdown(session, Config.Round.CountdownSeconds, true)
 			end
 		end
@@ -406,6 +429,7 @@ function RunSessionService.init(activeCourse: any, activeLobby: any)
 		sessions[player] = nil
 		ScoreService.clear(player)
 		WalletService.clear(player)
+		ProgressService.clear(player)
 	end)
 
 	RunService.Heartbeat:Connect(function(dt)

@@ -16,7 +16,11 @@ local V = Config.Validation
 local ScoreService = {}
 
 type Best = { Score: number, Splits: { number }, Breakdown: any }
-local bests: { [number]: Best } = {}
+local bests: { [string]: Best } = {} -- keyed "userId:level"
+
+local function bestKey(player: Player, level: number): string
+	return player.UserId .. ":" .. level
+end
 
 -- Highest impact speed reachable from the momentum the server measured, with an early
 -- Slam Dash and tolerance for the client's slightly different measurement.
@@ -112,24 +116,42 @@ function ScoreService.scoreImpact(inputs: ImpactInputs): (ScoreFormula.Breakdown
 	return breakdown, nil
 end
 
-function ScoreService.getBest(player: Player): Best?
-	return bests[player.UserId]
+function ScoreService.getBest(player: Player, level: number): Best?
+	return bests[bestKey(player, level)]
 end
 
-function ScoreService.recordRun(player: Player, breakdown: ScoreFormula.Breakdown, splits: { number }): boolean
+-- Best score per level for the level select, e.g. { [1] = 2684, [3] = 1900 }.
+function ScoreService.levelBests(player: Player, levelCount: number): { [string]: number }
+	local result = {}
+	for level = 1, levelCount do
+		local best = bests[bestKey(player, level)]
+		if best then
+			result[tostring(level)] = best.Score
+		end
+	end
+	return result
+end
+
+function ScoreService.recordRun(player: Player, level: number, breakdown: ScoreFormula.Breakdown, splits: { number }): boolean
 	if breakdown.Outcome ~= "Impact" then
 		return false
 	end
-	local best = bests[player.UserId]
+	local key = bestKey(player, level)
+	local best = bests[key]
 	if best and best.Score >= breakdown.Final then
 		return false
 	end
-	bests[player.UserId] = { Score = breakdown.Final, Splits = table.clone(splits), Breakdown = breakdown }
+	bests[key] = { Score = breakdown.Final, Splits = table.clone(splits), Breakdown = breakdown }
 	return true
 end
 
 function ScoreService.clear(player: Player)
-	bests[player.UserId] = nil
+	local prefix = player.UserId .. ":"
+	for key in bests do
+		if string.sub(key, 1, #prefix) == prefix then
+			bests[key] = nil
+		end
+	end
 end
 
 return ScoreService

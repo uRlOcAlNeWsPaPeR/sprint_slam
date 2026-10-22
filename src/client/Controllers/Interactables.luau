@@ -27,6 +27,7 @@ export type Interactables = typeof(setmetatable(
 		padCooldowns: { [number]: number },
 		jumpPadCooldowns: { [number]: number },
 		lastBonk: number,
+		level: number,
 		onEvent: (eventType: string) -> (),
 	},
 	Interactables
@@ -46,8 +47,14 @@ function Interactables.new(data: any, worldRoot: Instance, onEvent: ((string) ->
 		padCooldowns = {},
 		jumpPadCooldowns = {},
 		lastBonk = -math.huge,
+		level = 1,
 		onEvent = onEvent or function() end,
 	}, Interactables)
+end
+
+-- Obstacles retired on later levels (UntilLevel) stop colliding there.
+function Interactables.setLevel(self: Interactables, level: number)
+	self.level = level
 end
 
 function Interactables.reset(self: Interactables)
@@ -119,7 +126,8 @@ function Interactables.checkObstacles(self: Interactables, root: BasePart, posit
 	end
 	for index, def in self.data.MovingObstacles or {} do
 		local part = self.obstacleParts[index]
-		if part and Geometry.pointInBox(position, part.CFrame, def.Size, Vector3.new(1.4, 2.5, 1.4)) then
+		local retired = def.UntilLevel ~= nil and self.level > def.UntilLevel
+		if part and not retired and Geometry.pointInBox(position, part.CFrame, def.Size, Vector3.new(1.4, 2.5, 1.4)) then
 			self.lastBonk = t
 			local away = position - part.Position
 			-- Knock the runner out along the obstacle's sweep, plus a bit backward.

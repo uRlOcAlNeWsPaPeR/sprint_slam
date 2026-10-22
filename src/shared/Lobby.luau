@@ -99,7 +99,8 @@ local function portal(mode: string?, title: string, subtitle: string, base: Vect
 end
 
 -- Challenges time from leaving the start box to reaching the finish box. Falling below
--- FailY sends you back to Respawn.
+-- FailY sends you back to Respawn. BotRoute is the Studio QA bot's line through it, which
+-- doubles as proof the challenge can be completed (Jump/Dash on arrival, MaxSpeed caps).
 local function challenge(def: any)
 	table.insert(lobby.Challenges, def)
 end
@@ -126,12 +127,14 @@ sign(
 do
 	local center = at(-110, 0, 0)
 	floor("TowerBridge", -98, -60, -5, 5, 0, { EdgeAxis = "X" })
-	table.insert(lobby.Islands, { Name = "TowerIsland", Top = center, Radius = 14, Thickness = 4 })
+	table.insert(lobby.Islands, { Name = "TowerIsland", Top = center, Radius = 16, Thickness = 4 })
 	table.insert(lobby.Columns, { Base = center, Radius = 4.5, Height = 64, Accent = "Cyan", Solid = true })
 	local radius = 26
+	local stepCenters = {}
 	for step = 0, 14 do
 		local angle = math.rad(30 + 28 * step)
 		local spot = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		stepCenters[step] = spot
 		local half = if step == 14 then 7 else 3.5
 		local local3 = spot - ORIGIN
 		floor(
@@ -149,38 +152,62 @@ do
 	local firstAngle = math.rad(30)
 	local first = center + Vector3.new(math.cos(firstAngle) * radius, 0, math.sin(firstAngle) * radius)
 	local respawn = center + Vector3.new(6, 3.5, 4)
+	-- Bot line: take off 2.5 studs past each step's center toward the next one, at walking
+	-- pace. Rise 4, gap ~5.6 studs: a jump stays above +4 for ~0.38 s, which covers 2-11 studs
+	-- at 22-24 st/s, so every landing falls inside the 7-stud step.
+	local route = { { Position = at(-62, 0, 0), MaxSpeed = 30 } }
+	local toFirst = (first - center).Unit
+	table.insert(route, { Position = center + toFirst * 13.5, Jump = true, Radius = 1.5, MaxSpeed = 26 })
+	for step = 0, 13 do
+		local here, nextCenter = stepCenters[step], stepCenters[step + 1]
+		local direction = Vector3.new(nextCenter.X - here.X, 0, nextCenter.Z - here.Z).Unit
+		table.insert(route, { Position = here + direction * 2.5, Jump = true, Radius = 1.2, MaxSpeed = 24 })
+	end
+	table.insert(route, { Position = stepCenters[14], MaxSpeed = 20 })
 	challenge({
 		Name = "SKY TOWER",
-		Start = { CFrame = CFrame.new(center + Vector3.new(0, 4, 0)), Size = Vector3.new(28, 10, 28) },
+		Start = { CFrame = CFrame.new(center + Vector3.new(0, 4, 0)), Size = Vector3.new(34, 10, 34) },
 		Finish = { CFrame = CFrame.new(top + Vector3.new(0, 4, 0)), Size = Vector3.new(14, 8, 14) },
 		Respawn = facing(respawn, first),
 		FailY = -20,
+		BotRoute = route,
 	})
 	table.insert(lobby.Arches, { CFrame = CFrame.new(at(-70, 0, 0)) * CFrame.Angles(0, math.pi / 2, 0), Width = 14, Height = 14, Accent = "Cyan" })
 	sign("SKY TOWER", at(-70, 17, 0), ORIGIN, Vector2.new(18, 4), "Cyan")
 	sign("DROP OFF TO RETURN", top + Vector3.new(0, 6, 0), center, Vector2.new(14, 2.5), "Orange")
 end
 
--- DASH GAPS (east): gaps grow until only a boost, a ring and an air dash get you across ------
+-- DASH GAPS (east): three long landing decks sized for the speed the pads give you. Each
+-- jump is longer than the last; the final one climbs 4 studs over 42 and needs the pad, the
+-- ring and an air dash.
 do
 	local east = Vector3.new(1, 0, 0)
 	floor("GapsBridge", 60, 80, -5, 5, 0, { EdgeAxis = "X" })
-	floor("GapsStart", 80, 102, -6, 6, 0, { EdgeAxis = "X", Style = "FloorAlt" })
-	boostPad(at(96, 0, 0), east)
-	floor("Gap1", 116, 128, -6, 6, 0, { EdgeAxis = "X" })
-	floor("Gap2", 146, 158, -6, 6, 0, { EdgeAxis = "X" })
-	boostPad(at(152, 0, 0), east)
-	floor("Gap3", 184, 196, -6, 6, 0, { EdgeAxis = "X" })
-	boostPad(at(190, 0, 0), east)
-	table.insert(lobby.BoostRings, { Position = at(213, 9, 0), Normal = -east, Radius = 5 })
-	floor("Gap4", 230, 242, -6, 6, 4, { EdgeAxis = "X" })
-	floor("GapsFinish", 262, 288, -8, 8, 4, { EdgeAxis = "X", Style = "FloorAlt" })
+	-- The start deck is long so a respawned player has a full run-up to the first gap.
+	floor("GapsStart", 80, 130, -6, 6, 0, { EdgeAxis = "X", Style = "FloorAlt" })
+	boostPad(at(120, 0, 0), east)
+	floor("Gap1", 156, 188, -6, 6, 0, { EdgeAxis = "X" })
+	boostPad(at(178, 0, 0), east)
+	floor("Gap2", 218, 248, -6, 6, 0, { EdgeAxis = "X" })
+	boostPad(at(240, 0, 0), east)
+	table.insert(lobby.BoostRings, { Position = at(269, 9, 0), Normal = -east, Radius = 5 })
+	floor("GapsFinish", 290, 320, -8, 8, 4, { EdgeAxis = "X", Style = "FloorAlt" })
+	table.insert(lobby.Walls, { Name = "GapsBackstop", CFrame = CFrame.new(at(320.5, 9, 0)), Size = Vector3.new(1, 10, 16) })
 	challenge({
 		Name = "DASH GAPS",
-		Start = { CFrame = CFrame.new(at(91, 4, 0)), Size = Vector3.new(22, 10, 12) },
-		Finish = { CFrame = CFrame.new(at(275, 8, 0)), Size = Vector3.new(26, 8, 16) },
+		Start = { CFrame = CFrame.new(at(91, 4, 0)), Size = Vector3.new(22, 10, 12) }, -- back of the deck
+		Finish = { CFrame = CFrame.new(at(305, 8, 0)), Size = Vector3.new(30, 8, 16) },
 		Respawn = CFrame.lookAt(at(84, 3.5, 0), at(200, 3.5, 0)),
 		FailY = -20,
+		-- Take off at each deck's far edge; air-dash over the last gap.
+		BotRoute = {
+			{ Position = at(62, 0, 0) },
+			{ Position = at(84, 0, 0) },
+			{ Position = at(127, 0, 0), Jump = true, Radius = 1.5 },
+			{ Position = at(185, 0, 0), Jump = true, Radius = 1.5 },
+			{ Position = at(245, 0, 0), Jump = true, Dash = true, Radius = 1.5 },
+			{ Position = at(305, 0, 0), Radius = 4 },
+		},
 	})
 	table.insert(lobby.Arches, { CFrame = CFrame.new(at(70, 0, 0)) * CFrame.Angles(0, math.pi / 2, 0), Width = 14, Height = 14, Accent = "Orange" })
 	sign("DASH GAPS", at(70, 17, 0), ORIGIN, Vector2.new(18, 4), "Orange")
@@ -213,6 +240,15 @@ do
 		Finish = { CFrame = CFrame.new(at(0, 22, 246)), Size = Vector3.new(20, 8, 32) },
 		Respawn = CFrame.lookAt(at(0, 3.5, 70), at(0, 3.5, 200)),
 		FailY = -20,
+		-- Straight down the beams; the bot waits for each sweeper to clear before passing it.
+		BotRoute = {
+			{ Position = at(0, 0, 58) },
+			{ Position = at(0, 0, 136) },
+			{ Position = at(0, 0, 148) },
+			{ Position = at(0, 0, 208) },
+			{ Position = at(0, 0, 216), Radius = 2 },
+			{ Position = at(0, 0, 246) },
+		},
 	})
 	table.insert(lobby.Arches, { CFrame = CFrame.new(at(0, 0, 70)), Width = 16, Height = 14, Accent = "Cyan" })
 	sign("BEAM RUN", at(0, 17, 70), ORIGIN, Vector2.new(18, 4), "Cyan")

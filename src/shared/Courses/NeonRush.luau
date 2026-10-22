@@ -5,6 +5,10 @@
 --  start ─ runway (3 boost pads) ─ gap ─ split: moving blocks │ jump pad → shortcut beam + ring
 --  ─ downhill speed ramp ─ S-bend (moving blocks) ─ pillar gauntlet ─ gap + timing ring
 --  ─ slam runway ─ launch ramp ─▶ TARGET
+--
+-- Levels reuse this layout. Each of the first five adds a hazard type on top of the last:
+--   1 NEON RUSH · 2 DANGER ZONE (death blocks) · 3 LASER GRID (laser gates)
+--   4 SPIN CYCLE (spinners) · 5 BLINK OUT (blink floors replace the S-bend floor)
 
 local FORWARD = Vector3.new(0, 0, -1)
 local THICKNESS = 2
@@ -25,6 +29,14 @@ local course = {
 	BoostRings = {},
 	MovingObstacles = {},
 	Pillars = {},
+	Hazards = {}, -- level hazards; see HazardMath
+	Levels = {
+		{ Name = "NEON RUSH", Intro = "Boost, dash, slide - then slam the target." },
+		{ Name = "DANGER ZONE", New = "DEATH BLOCKS", Intro = "Red blocks are lethal: touch one and you respawn at the last checkpoint." },
+		{ Name = "LASER GRID", New = "LASER GATES", Intro = "Lasers blink on and off. Cross while they're dark - or jump them." },
+		{ Name = "SPIN CYCLE", New = "SPINNERS", Intro = "Spinning bars sweep the floor. Jump them or get knocked away." },
+		{ Name = "BLINK OUT", New = "BLINK FLOORS", Intro = "The S-bend floor flashes in a wave. Wait for it, then ride it at about 50." },
+	},
 	Arches = {},
 	Signs = {},
 	Checkpoints = {},
@@ -42,20 +54,27 @@ local course = {
 	-- Studio QA autopilot line (DevAutopilot): gap jump, jump-pad shortcut, slide the downhill.
 	-- Jump = jump on arrival; Slide = slide while heading there; Radius = arrival radius.
 	BotRoute = {
-		{ Position = Vector3.new(0, 0, -244), Jump = true, Radius = 3 },
+		{ Position = Vector3.new(10, 0, -90) }, -- lanes clear of the level 2 death blocks
+		{ Position = Vector3.new(0, 0, -140) },
+		{ Position = Vector3.new(12, 0, -198) },
+		{ Position = Vector3.new(6, 0, -244), Jump = true, Radius = 3 },
 		{ Position = Vector3.new(6, 0, -272) },
 		{ Position = Vector3.new(11, 0, -284), Radius = 4 },
 		{ Position = Vector3.new(11, 20, -330) },
 		{ Position = Vector3.new(11, 20, -450) },
-		{ Position = Vector3.new(0, -10, -520), Slide = true },
+		{ Position = Vector3.new(8, -18, -545), Slide = true },
+		{ Position = Vector3.new(-8, -28.8, -590), Slide = true },
 		{ Position = Vector3.new(0, -36, -612), Slide = true },
-		{ Position = Vector3.new(0, -36, -722), Radius = 10 },
-		{ Position = Vector3.new(118, -36, -730), Radius = 10 },
+		{ Position = Vector3.new(6, -36, -700) },
+		{ Position = Vector3.new(6, -36, -722), Radius = 10, WaitForBlinkWave = true },
+		{ Position = Vector3.new(118, -36, -730), Radius = 10, MaxSpeed = 52 },
 		{ Position = Vector3.new(128, -36, -760) },
 		{ Position = Vector3.new(123.5, -36, -905) },
 		{ Position = Vector3.new(123.5, -36, -1019) },
 		{ Position = Vector3.new(128, -36, -1036), Jump = true, Radius = 3 },
 		{ Position = Vector3.new(128, -36, -1075) },
+		{ Position = Vector3.new(118, -36, -1200) }, -- left of the slam-runway death block
+		{ Position = Vector3.new(118, -36, -1245) },
 		{ Position = Vector3.new(128, -36, SLAM_Z - 140) },
 		{ Position = Vector3.new(128, -16, LIP_Z - 20) },
 	},
@@ -83,6 +102,7 @@ local function floor(name: string, x0: number, x1: number, z0: number, z1: numbe
 		Size = Vector3.new(math.abs(x1 - x0), THICKNESS, math.abs(z1 - z0)),
 		Style = options.Style or "Floor",
 		EdgeAxis = options.EdgeAxis or "Z",
+		UntilLevel = options.UntilLevel,
 	})
 end
 
@@ -106,7 +126,7 @@ local function arch(position: Vector3, width: number, height: number, accent: st
 	table.insert(course.Arches, { Position = position, Width = width, Height = height, Accent = accent or "Cyan" })
 end
 
-local function movingBlock(position: Vector3, size: Vector3, axis: Vector3, amplitude: number, period: number, phase: number)
+local function movingBlock(position: Vector3, size: Vector3, axis: Vector3, amplitude: number, period: number, phase: number, untilLevel: number?)
 	table.insert(course.MovingObstacles, {
 		CFrame = CFrame.new(position),
 		Size = size,
@@ -114,6 +134,37 @@ local function movingBlock(position: Vector3, size: Vector3, axis: Vector3, ampl
 		Amplitude = amplitude,
 		Period = period,
 		Phase = phase,
+		UntilLevel = untilLevel,
+	})
+end
+
+local function deathBlock(center: Vector3, size: Vector3)
+	table.insert(course.Hazards, { Type = "Kill", Level = 2, CFrame = CFrame.new(center), Size = size })
+end
+
+-- Full-width laser bar from 1 to 5 studs above `floorCenter`.
+local function laser(floorCenter: Vector3, width: number, period: number, phase: number)
+	table.insert(course.Hazards, {
+		Type = "Laser",
+		Level = 3,
+		CFrame = CFrame.new(floorCenter + Vector3.new(0, 3, 0)),
+		Size = Vector3.new(width, 4, 0.6),
+		Period = period,
+		OnFraction = 0.5,
+		Phase = phase,
+	})
+end
+
+local function spinner(floorCenter: Vector3, length: number, speed: number)
+	table.insert(course.Hazards, {
+		Type = "Spinner",
+		Level = 4,
+		Center = floorCenter,
+		Length = length,
+		Thickness = 1.2,
+		Height = 1.5,
+		Speed = speed,
+		Phase = 0,
 	})
 end
 
@@ -188,9 +239,25 @@ end
 -- 5. Flat + S-bend -------------------------------------------------------------------------
 floor("BendEntry", -16, 16, -620, -742, -36)
 boostPad(Vector3.new(0, -36, -665))
-floor("BendLateral", 16, 140, -718, -742, -36, { EdgeAxis = "X" })
-movingBlock(Vector3.new(52, -33, -730), Vector3.new(4, 6, 8), Vector3.zAxis, 7, 2.2, 0)
-movingBlock(Vector3.new(92, -33, -730), Vector3.new(4, 6, 8), Vector3.zAxis, 7, 2.2, 0.5)
+floor("BendLateral", 16, 116, -718, -742, -36, { EdgeAxis = "X", UntilLevel = 4 })
+floor("BendCorner", 116, 140, -718, -742, -36, { EdgeAxis = "X" })
+movingBlock(Vector3.new(52, -33, -730), Vector3.new(4, 6, 8), Vector3.zAxis, 7, 2.2, 0, 4)
+movingBlock(Vector3.new(92, -33, -730), Vector3.new(4, 6, 8), Vector3.zAxis, 7, 2.2, 0.5, 4)
+-- Level 5: the lateral floor becomes five blink segments lit in a wave travelling +X at
+-- 50 st/s. Segment k is solid for 1.5 s starting 0.4·k s into each 2.5 s cycle, so a
+-- runner who leaves the corner as segment 1 lights and holds ~40-70 st/s stays on solid floor.
+for k = 0, 4 do
+	local x0 = 16 + 20 * k
+	table.insert(course.Hazards, {
+		Type = "Blink",
+		Level = 5,
+		CFrame = CFrame.new((x0 + x0 + 20) / 2, -37, -730),
+		Size = Vector3.new(20, THICKNESS, 24),
+		Period = 2.5,
+		OnFraction = 0.6,
+		Phase = -0.4 * k / 2.5,
+	})
+end
 floor("BendExit", 116, 140, -742, -900, -36)
 
 -- 6. Pillar gauntlet: weave, or thread the 3-stud straight line at x ≈ 123.5 -------------
@@ -238,6 +305,26 @@ table.insert(course.Signs, {
 	Size = Vector2.new(120, 18),
 	Accent = "Orange",
 })
+
+-- Level hazards ---------------------------------------------------------------------------------
+-- Level 2 death blocks: each leaves at least a 12-stud lane open.
+deathBlock(Vector3.new(0, 2.5, -90), Vector3.new(10, 5, 4))
+deathBlock(Vector3.new(-12, 2.5, -140), Vector3.new(12, 5, 4))
+deathBlock(Vector3.new(12, 2.5, -140), Vector3.new(12, 5, 4))
+deathBlock(Vector3.new(0, 2.5, -198), Vector3.new(14, 5, 4))
+deathBlock(Vector3.new(-9, -16, -545), Vector3.new(14, 6, 4)) -- downhill slalom
+deathBlock(Vector3.new(9, -26.8, -590), Vector3.new(14, 6, 4))
+deathBlock(Vector3.new(-8, -33.5, -700), Vector3.new(12, 5, 4))
+deathBlock(Vector3.new(128, -33.5, -1215), Vector3.new(10, 5, 4)) -- splits the slam runway
+-- Level 3 laser gates: on half of each cycle, staggered so they don't line up.
+laser(Vector3.new(0, 0, -165), 36, 2.0, 0)
+laser(Vector3.new(0, 0, -345), 32, 2.2, 0.3)
+laser(Vector3.new(0, -36, -682), 32, 1.8, 0.6) -- well past the downhill respawn at -650
+laser(Vector3.new(128, -36, -1100), 40, 2.0, 0.5)
+-- Level 4 spinners: low bars (feet-high) you can jump.
+spinner(Vector3.new(0, 0, -448), 28, 2.2)
+spinner(Vector3.new(128, -36, -820), 22, -2.6)
+spinner(Vector3.new(128, -36, -1130), 34, 2.0)
 
 -- Checkpoints (index 1 is the start) ------------------------------------------------------------
 checkpoint("Start", Vector3.new(0, 5, -12), Vector3.new(44, 20, 20), Vector3.new(0, 3.5, -12))
