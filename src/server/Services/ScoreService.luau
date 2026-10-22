@@ -1,0 +1,135 @@
+--!strict
+-- Authoritative scoring. Reconciles the client's impact claim with what the server saw,
+-- re-tallies combos under server rules, and tracks per-session personal bests.
+-- (Phase 3 moves bests to DataStores.)
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage.Shared
+local Config = require(Shared.Config)
+local Geometry = require(Shared.Geometry)
+local ScoreFormula = require(Shared.ScoreFormula)
+
+local V = Config.Validation
+
+local ScoreService = {}
+
+type Best = { Score: number, Splits: { number }, Breakdown: any }
+local bests: { [number]: Best } = {}
+
+local function launchSpeedFor(approachSpeed: number): number
+	return math.clamp(approachSpeed * Config.Slam.LaunchSpeedMultiplier, Config.Slam.MinLaunchSpeed, Config.Slam.MaxLaunchSpeed)
+end
+
+-- Highest impact speed physically reachable from the approach speed the server observed.
+function ScoreService.impactSpeedCap(approachSpeed: number): number
+	return launchSpeedFor(approachSpeed) * (1 + Config.Slam.SlamDashMaxBonus) * 1.1 + 25
+end
+
+local function boosterPositions(course: any, kind: string): { Vector3 }
+	local points = {}
+	if kind == "BoostPads" or kind == "Boosters" then
+		for _, pad in course.BoostPads do
+			table.insert(points, pad.Position)
+		end
+	end
+	if kind == "BoostRings" or kind == "Boosters" then
+		for _, ring in course.BoostRings do
+			table.insert(points, ring.Position)
+		end
+	end
+	return points
+end
+
+-- Returns points awarded (0 when rejected).
+function ScoreService.tryCombo(session: any, eventType: string, now: number, fromServer: boolean): number
+	local def = Config.Combo.Events[eventType]
+	if not def then
+		return 0
+	end
+	if def.ServerOnly and not fromServer then
+		return 0
+	end
+	if def.Near then
+		local points = boosterPositions(session.course, def.Near)
+		if not session.validator:wasNear(points, now, V.NearDistance, V.NearLookback) then
+			return 0
+		end
+	end
+	local awarded = session.combo:add(eventType, now)
+	return awarded
+end
+
+export type ImpactInputs = {
+	course: any,
+	goTime: number,
+	launch: { Time: number, Speed: number },
+	serverImpact: { Point: Vector3, Speed: number }?,
+	claim: { Point: Vector3, Speed: number, LaunchTime: number }?,
+	extrapolated: { Point: Vector3, Speed: number }?,
+	ping: number,
+	comboBonus: number,
+}
+
+-- Returns the breakdown, or nil plus a reason when the impact cannot be verified.
+function ScoreService.scoreImpact(inputs: ImpactInputs): (ScoreFormula.Breakdown?, string?)
+	local serverImpact = inputs.serverImpact or inputs.extrapolated
+	if not serverImpact then
+		return nil, "impact not observed"
+	end
+	local claim = inputs.claim
+
+	local point = serverImpact.Point
+	if claim and (claim.Point - serverImpact.Point).Magnitude <= V.ImpactPointTolerance then
+		point = claim.Point
+	end
+
+	local cap = ScoreService.impactSpeedCap(inputs.launch.Speed)
+	local speed = math.min(serverImpact.Speed, cap)
+	if claim then
+		speed = math.min(claim.Speed, serverImpact.Speed * V.ImpactSpeedTolerance, cap)
+	end
+
+	local launchTime = inputs.launch.Time
+	if claim then
+		local earliest = launchTime - (inputs.ping + 0.1)
+		if claim.LaunchTime >= earliest and claim.LaunchTime <= launchTime then
+			launchTime = claim.LaunchTime
+		end
+	end
+	local roundTime = Config.Round.RoundTime
+	local timeRemaining = math.clamp(inputs.goTime + roundTime - launchTime, 0, roundTime)
+
+	local target = inputs.course.Target
+	local _, radius = Geometry.targetOffset(point, target.Center, target.Normal)
+	local breakdown = ScoreFormula.compute({
+		Outcome = "Impact",
+		ImpactSpeed = speed,
+		Zone = ScoreFormula.zoneForRadius(radius),
+		TimeRemaining = timeRemaining,
+		ComboBonus = inputs.comboBonus,
+	})
+	return breakdown, nil
+end
+
+function ScoreService.getBest(player: Player): Best?
+	return bests[player.UserId]
+end
+
+function ScoreService.recordRun(player: Player, breakdown: ScoreFormula.Breakdown, splits: { number }): boolean
+	if breakdown.Outcome ~= "Impact" then
+		return false
+	end
+	local best = bests[player.UserId]
+	if best and best.Score >= breakdown.Final then
+		return false
+	end
+	bests[player.UserId] = { Score = breakdown.Final, Splits = table.clone(splits), Breakdown = breakdown }
+	return true
+end
+
+function ScoreService.clear(player: Player)
+	bests[player.UserId] = nil
+end
+
+return ScoreService
