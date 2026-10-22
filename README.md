@@ -9,6 +9,13 @@ The full concept analysis, technical challenges, architecture and phased roadmap
 
 ## Status
 
+**The Hub (lobby).** Every player spawns in a floating neon hub. Walk into the **Sprint Slam**
+portal to start a run, and press **L** (or the HUB button) to come back. Two locked portals
+are ready for future modes. Around the plaza are three timed parkour challenges that use the
+full movement kit: **Sky Tower** (spiral climb), **Dash Gaps** (boost pads, a ring and air
+dashes) and **Beam Run** (narrow beams, sweepers, a jump pad). Your session bests are shown
+on finish.
+
 **Phase 1 — Core prototype.** One complete course (Neon Rush) with momentum movement, dash,
 slide, boost pads, jump pad shortcut, moving obstacles, slam flight with steering and Slam
 Dash, zone scoring, server validation, session bests and instant restart.
@@ -49,7 +56,8 @@ It switches HTTP on only for the fetch. With [Rojo](https://rojo.space) installe
 | Jump | Space | A | Jump |
 | Dash / Slam Dash | Shift or E | X | DASH |
 | Slide | Ctrl or C | B | SLIDE |
-| Restart | R | Y | RESTART |
+| Restart run / restart challenge | R | Y | RESTART |
+| Back to the hub | L | Select | HUB |
 
 ## Tuning
 

@@ -13,6 +13,7 @@ Net.Names = {
 	RunResult = "RunResult",
 	-- client → server
 	RequestRestart = "RequestRestart",
+	RequestMode = "RequestMode", -- "SprintSlam" (from a portal) or "Lobby"
 	RequestRespawn = "RequestRespawn",
 	ComboEvent = "ComboEvent",
 	ImpactClaim = "ImpactClaim",

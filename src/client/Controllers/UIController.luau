@@ -16,6 +16,7 @@ local Palette = Config.Palette
 local UIController = {}
 
 UIController.RestartClicked = Signal.new()
+UIController.LobbyClicked = Signal.new()
 
 local HEAVY = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Heavy)
 local BOLD = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold)
@@ -89,6 +90,14 @@ end
 local gui: ScreenGui
 local rootScale: UIScale
 local timerLabel: TextLabel
+local topFrame: Frame
+local restartButton: TextButton
+local lobbyButton: TextButton
+local momentumRow: Frame
+local lobbyHeader: Frame
+local challengeLabel: TextLabel
+local challengeTimer: TextLabel
+local mode = "Run"
 local progressFill: Frame
 local progressMarker: Frame
 local splitLabel: TextLabel
@@ -141,6 +150,7 @@ local function buildTop(parent: Instance)
 		BackgroundTransparency = 1,
 		Parent = parent,
 	})
+	topFrame = top
 	timerLabel = label({
 		Name = "Timer",
 		Size = UDim2.new(1, 0, 0, 54),
@@ -242,7 +252,7 @@ local function buildCorners(parent: Instance)
 		Text = "COINS  0",
 		Parent = parent,
 	})
-	local restart = new("TextButton", {
+	restartButton = new("TextButton", {
 		Name = "Restart",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -24, 0, 16),
@@ -257,9 +267,71 @@ local function buildCorners(parent: Instance)
 		Children = { corner(10), stroke(Palette.Cyan, 1.5, 0.4) },
 		Parent = parent,
 	})
-	restart.Activated:Connect(function()
+	restartButton.Activated:Connect(function()
 		UIController.RestartClicked:Fire()
 	end)
+	lobbyButton = new("TextButton", {
+		Name = "Lobby",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -24, 0, 62),
+		Size = UDim2.fromOffset(150, 40),
+		BackgroundColor3 = Palette.Panel,
+		BackgroundTransparency = 0.1,
+		AutoButtonColor = true,
+		FontFace = BOLD,
+		TextSize = 16,
+		TextColor3 = Palette.White,
+		Text = if UserInputService.TouchEnabled then "HUB" else "HUB  [L]",
+		Children = { corner(10), stroke(Palette.Orange, 1.5, 0.4) },
+		Parent = parent,
+	})
+	lobbyButton.Activated:Connect(function()
+		UIController.LobbyClicked:Fire()
+	end)
+end
+
+local function buildLobbyHeader(parent: Instance)
+	lobbyHeader = new("Frame", {
+		Name = "LobbyHeader",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 16),
+		Size = UDim2.fromOffset(620, 100),
+		BackgroundTransparency = 1,
+		Visible = false,
+		Parent = parent,
+	})
+	label({
+		Name = "Hint",
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.new(1, 0, 0, 20),
+		FontFace = BOLD,
+		TextSize = 16,
+		TextColor3 = Palette.White,
+		Text = "Walk into the SPRINT SLAM portal to play  |  Try the parkour challenges",
+		Children = { stroke(Palette.Charcoal, 2, 0.3) },
+		Parent = lobbyHeader,
+	})
+	challengeLabel = label({
+		Name = "Challenge",
+		Position = UDim2.fromOffset(0, 28),
+		Size = UDim2.new(1, 0, 0, 26),
+		FontFace = HEAVY,
+		TextSize = 24,
+		TextColor3 = Palette.Orange,
+		Text = "",
+		Children = { stroke(Palette.Charcoal, 2, 0.2) },
+		Parent = lobbyHeader,
+	})
+	challengeTimer = label({
+		Name = "Timer",
+		Position = UDim2.fromOffset(0, 56),
+		Size = UDim2.new(1, 0, 0, 40),
+		FontFace = MONO,
+		TextSize = 38,
+		Text = "",
+		Children = { stroke(Palette.Charcoal, 2.5, 0.2) },
+		Parent = lobbyHeader,
+	})
 end
 
 local function buildSpeed(parent: Instance)
@@ -321,7 +393,7 @@ local function buildSpeed(parent: Instance)
 		Parent = bar,
 	})
 	-- Momentum = average speed over the whole run; it sets launch speed and impact power.
-	local momentumRow = new("Frame", {
+	momentumRow = new("Frame", {
 		Name = "Momentum",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 116),
@@ -599,7 +671,7 @@ local function buildResults(parent: Instance)
 		Name = "Results",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(540, 640),
+		Size = UDim2.fromOffset(540, 690),
 		BackgroundColor3 = Palette.Charcoal,
 		BackgroundTransparency = 0.04,
 		GroupTransparency = 1,
@@ -708,6 +780,22 @@ local function buildResults(parent: Instance)
 	button.Activated:Connect(function()
 		UIController.RestartClicked:Fire()
 	end)
+	local hubButton = new("TextButton", {
+		Name = "Hub",
+		LayoutOrder = 15,
+		Size = UDim2.fromOffset(260, 36),
+		BackgroundColor3 = Palette.Panel,
+		AutoButtonColor = true,
+		FontFace = BOLD,
+		TextSize = 17,
+		TextColor3 = Palette.White,
+		Text = if UserInputService.TouchEnabled then "BACK TO HUB" else "BACK TO HUB  [L]",
+		Children = { corner(10), stroke(Palette.Cyan, 1.5, 0.4) },
+		Parent = body,
+	})
+	hubButton.Activated:Connect(function()
+		UIController.LobbyClicked:Fire()
+	end)
 end
 
 local function updateScale()
@@ -748,6 +836,7 @@ function UIController.init(activeCourse: any)
 	buildSpeed(canvas)
 	buildCombo(canvas)
 	buildCenter(canvas)
+	buildLobbyHeader(canvas)
 	buildResults(canvas)
 end
 
@@ -872,9 +961,50 @@ export type HudInfo = {
 	Momentum: number,
 	Progress: number,
 	Prediction: { TimeToImpact: number, Zone: string }?,
+	Challenge: { Name: string, Phase: string, Elapsed: number, Best: number? }?,
 }
 
+local function updateChallenge(challenge: { Name: string, Phase: string, Elapsed: number, Best: number? }?)
+	if not challenge then
+		challengeLabel.Text = ""
+		challengeTimer.Text = ""
+		return
+	end
+	local best = if challenge.Best then string.format("   BEST %.2f", challenge.Best) else ""
+	if challenge.Phase == "Ready" then
+		challengeLabel.Text = challenge.Name .. "  -  GO WHEN READY" .. best
+		challengeTimer.Text = "0.00"
+	elseif challenge.Phase == "Active" then
+		challengeLabel.Text = challenge.Name .. best
+		challengeTimer.Text = string.format("%.2f", challenge.Elapsed)
+	else
+		challengeLabel.Text = challenge.Name .. "  COMPLETE" .. best
+		challengeTimer.Text = string.format("%.2f", challenge.Elapsed)
+	end
+end
+
+-- "Lobby" shows the hub header and hides run-only HUD; "Run" is the Sprint Slam HUD.
+function UIController.setMode(newMode: string)
+	mode = newMode
+	local inLobby = newMode == "Lobby"
+	topFrame.Visible = not inLobby
+	comboFrame.Visible = not inLobby
+	restartButton.Visible = not inLobby
+	lobbyButton.Visible = not inLobby
+	momentumRow.Visible = not inLobby
+	lobbyHeader.Visible = inLobby
+	courseLabel.Text = if inLobby then "THE HUB" else course.DisplayName
+	if inLobby then
+		countdownGoTime = nil
+		fadeText(countdownLabel, false)
+		updateChallenge(nil)
+	end
+end
+
 function UIController.update(info: HudInfo)
+	if mode == "Lobby" then
+		updateChallenge(info.Challenge)
+	end
 	timerLabel.Text = formatTime(info.TimeLeft)
 	timerLabel.TextColor3 = if info.TimeLeft <= 10 and info.State == "Running" then Palette.Orange else Palette.White
 

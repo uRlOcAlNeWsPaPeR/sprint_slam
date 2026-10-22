@@ -1,6 +1,7 @@
 --!strict
--- Client run state machine. Predicts everything locally for instant feel (countdown,
--- timer, combos, impact) and defers to the server's RunState / RunResult for the truth.
+-- Client state machine for the hub and Sprint Slam runs. Predicts everything locally for
+-- instant feel (countdown, timer, combos, impact) and defers to the server's RunState /
+-- RunResult for the truth. The server decides when you are in the hub or in a run.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,6 +18,7 @@ local DashController = require(script.Parent.DashController)
 local DevAutopilot = require(script.Parent.DevAutopilot)
 local EffectsController = require(script.Parent.EffectsController)
 local InputController = require(script.Parent.InputController)
+local LobbyController = require(script.Parent.LobbyController)
 local MovementController = require(script.Parent.MovementController)
 local ProceduralPose = require(script.Parent.ProceduralPose)
 local SlamController = require(script.Parent.SlamController)
@@ -25,7 +27,7 @@ local UIController = require(script.Parent.UIController)
 
 local RunController = {}
 
--- "Waiting" | "Countdown" | "Running" | "Flight" | "Impact" | "AwaitResult" | "Results"
+-- "Waiting" | "Lobby" | "Countdown" | "Running" | "Flight" | "Impact" | "AwaitResult" | "Results"
 local state = "Waiting"
 local runId = 0
 local goTime = math.huge
@@ -66,9 +68,27 @@ local function enterCountdown()
 	pendingResult = nil
 	resultDeadline = nil
 	UIController.resetRun()
+	UIController.setMode("Run")
 	DevAutopilot.reset()
 	UIController.showCountdown(goTime)
 	setState("Countdown")
+end
+
+-- In the hub you move freely with the full movement kit; no timer, no scoring.
+local function enterLobby()
+	SlamController.cleanup()
+	MovementController.reset()
+	MovementController.setEnabled(true)
+	InputController.setMovementEnabled(true)
+	DashController.reset()
+	LobbyController.reset()
+	pendingResult = nil
+	resultDeadline = nil
+	frozenTimeLeft = nil
+	UIController.resetRun()
+	UIController.setMode("Lobby")
+	DevAutopilot.reset()
+	setState("Lobby")
 end
 
 local function onRunState(payload: any)
@@ -83,6 +103,8 @@ local function onRunState(payload: any)
 	UIController.setCoins(payload.CoinBalance)
 	if payload.State == "Countdown" and isNewRun then
 		enterCountdown()
+	elseif payload.State == "Lobby" and state ~= "Lobby" then
+		enterLobby()
 	end
 end
 
@@ -147,6 +169,13 @@ local function onCombo(eventType: string)
 end
 
 function RunController.restart()
+	if state == "Lobby" then
+		local respawnAt = LobbyController.restartChallenge()
+		if respawnAt then
+			MovementController.teleport(respawnAt)
+		end
+		return
+	end
 	local t = now()
 	if t - lastRestart < Config.Round.RestartCooldown or state == "Waiting" then
 		return
@@ -158,6 +187,12 @@ function RunController.restart()
 	CourseController.resetRun()
 	UIController.hideResults()
 	remotes.RequestRestart:FireServer()
+end
+
+function RunController.returnToLobby()
+	if state ~= "Lobby" and state ~= "Waiting" then
+		remotes.RequestMode:FireServer("Lobby")
+	end
 end
 
 local function respawn()
@@ -213,6 +248,7 @@ end
 function RunController.update(dt: number)
 	local t = now()
 	CourseController.animate()
+	LobbyController.animate()
 
 	if state == "Countdown" and t >= goTime then
 		setState("Running")
@@ -224,7 +260,10 @@ function RunController.update(dt: number)
 
 	local root = MovementController.getRoot()
 	DevAutopilot.update(state)
-	if state == "Running" and root then
+	if state == "Lobby" and root then
+		MovementController.update(dt)
+		LobbyController.update(root)
+	elseif state == "Running" and root then
 		MovementController.update(dt)
 		momentum:add(MovementController.getActualSpeed() * dt, dt)
 		CourseController.update(root)
@@ -276,6 +315,7 @@ function RunController.update(dt: number)
 		Momentum = momentum:value(),
 		Progress = if inFlight or state == "Impact" or state == "Results" then 1 else distance / length,
 		Prediction = if inFlight then SlamController.getPrediction() else nil,
+		Challenge = if state == "Lobby" then LobbyController.getStatus() else nil,
 	})
 end
 
@@ -286,9 +326,9 @@ local function bindCharacter(character: Model)
 	SlamController.cleanup()
 end
 
-function RunController.init(activeCourse: any)
+function RunController.init(activeCourse: any, activeLobby: any)
 	course = activeCourse
-	DevAutopilot.init(activeCourse)
+	DevAutopilot.init(activeCourse, activeLobby)
 	for _, name in Net.Names do
 		remotes[name] = Net.get(name)
 	end
@@ -306,20 +346,47 @@ function RunController.init(activeCourse: any)
 	CourseController.FellOut:Connect(respawn)
 	SlamController.Impact:Connect(onImpact)
 
+	LobbyController.EnterRequested:Connect(function(mode: string)
+		if state == "Lobby" then
+			remotes.RequestMode:FireServer(mode)
+			UIController.toast("ENTERING SPRINT SLAM", Config.Palette.Orange, 1.2)
+		end
+	end)
+	LobbyController.FellOut:Connect(function(respawnAt: CFrame, challengeName: string?)
+		MovementController.teleport(respawnAt)
+		CameraController.shake(0.25)
+		if challengeName then
+			UIController.toast(challengeName .. "  -  TRY AGAIN", Config.Palette.Orange, 1)
+		end
+	end)
+	LobbyController.ChallengeFinished:Connect(function(name: string, time: number, best: number, isBest: boolean)
+		local text = string.format("%s  %.2fs", name, time)
+		if isBest then
+			text ..= "  NEW BEST!"
+		else
+			text ..= string.format("  (BEST %.2fs)", best)
+		end
+		UIController.toast(text, if isBest then Config.Palette.Orange else Config.Palette.Cyan, 2.5)
+		CameraController.shake(0.2)
+		EffectsController.burst(Config.Palette.Orange, 30)
+	end)
+
 	InputController.Dash:Connect(function()
-		if state == "Running" then
+		if state == "Running" or state == "Lobby" then
 			DashController.tryDash()
 		elseif state == "Flight" then
 			SlamController.trySlamDash()
 		end
 	end)
 	InputController.Slide:Connect(function()
-		if state == "Running" then
+		if state == "Running" or state == "Lobby" then
 			MovementController.trySlide()
 		end
 	end)
 	InputController.Restart:Connect(RunController.restart)
 	UIController.RestartClicked:Connect(RunController.restart)
+	InputController.Lobby:Connect(RunController.returnToLobby)
+	UIController.LobbyClicked:Connect(RunController.returnToLobby)
 
 	local player = Players.LocalPlayer
 	player.CharacterAdded:Connect(bindCharacter)

@@ -99,6 +99,7 @@ src/
     ScoreFormula.luau            pure scoring function (server + client preview)
     ComboTracker.luau            pure combo chain logic (server + client)
     Momentum.luau                run-average speed → launch speed → impact speed (server + client)
+    Lobby.luau                   THE HUB data: plaza, portals, parkour challenges
     Geometry.luau                plane crossings, OBB tests, path projection
     Net.luau                     RemoteEvent registry
     Signal.luau                  tiny signal class
@@ -109,8 +110,10 @@ src/
     Main.server.luau             bootstrap
     Services/
       WorldSetup.luau            lighting, collision groups, player defaults
+      BuildKit.luau              part-building primitives shared by every world builder
+      LobbyManager.luau          builds the hub from Shared.Lobby
       CourseManager.luau         builds course parts from a definition
-      RunSessionService.luau     per-player run state machine + remotes
+      RunSessionService.luau     per-player session: hub ↔ Sprint Slam runs, remotes
       RunValidator.luau          sampling, gate crossing, plausibility, impact detection
       ScoreService.luau          authoritative scoring, session bests
       WalletService.luau         coin balances (DataStore, session fallback)
@@ -120,12 +123,14 @@ src/
       InputController.luau       keyboard / gamepad / touch bindings
       MovementController.luau    momentum, carving, slide, landings, collisions
       DashController.luau        dash, cooldown, dash FX
-      CourseController.luau      pads, rings, obstacles, kill plane, launch trigger, progress
+      Interactables.luau         pads, rings, moving obstacles for any world
+      CourseController.luau      course kill plane, launch trigger, progress
+      LobbyController.luau       hub portals, parkour challenge timing, falls
       SlamController.luau        flight physics, steering, reticle, impact FX
       CameraController.luau      FOV by speed, trauma shake, flight camera
       ProceduralPose.luau        slide / flight poses via Motor6D.Transform
       EffectsController.luau     trails, speed streaks, bursts
-      RunController.luau         client run state machine
+      RunController.luau         client state machine (hub and runs)
       UIController.luau          HUD, SLAM MODE, countdown, results
       DevAutopilot.luau          Studio-only QA bot that drives full runs through real input
   tests/    → ServerStorage.Tests      spec modules for pure shared logic
@@ -179,7 +184,20 @@ effects, poses, auras. `TeamService` scores teams from each member's best verifi
 `DailyChallengeService`: UTC day index → seeded selection among validated templates, plus safe
 parameter variation. Countdown to 00:00 UTC, practice mode for past courses (unranked).
 
-## 6. Controls (Phase 1)
+## 6. The Hub
+
+Players spawn in THE HUB, a floating plaza. A run starts only by walking into the Sprint Slam
+portal: the client asks, and the server checks that the player really is at the portal
+before starting the countdown. **L** (or HUB) returns to the hub from any run state. New modes
+add a portal entry in `Shared/Lobby.luau` plus a session handler; the two locked portals are
+placeholders for them.
+
+Parkour challenges (Sky Tower, Dash Gaps, Beam Run) are data: a start box, a finish box, a
+respawn and a fail line. The timer starts when you leave the start box. Falling below the
+fail line returns you to the start, and walking back onto the plaza cancels the attempt.
+Times are client-side session bests for now; leaderboards come with Phase 3.
+
+## 7. Controls (Phase 1)
 
 | Action | Keyboard | Gamepad | Touch |
 |---|---|---|---|
@@ -187,4 +205,5 @@ parameter variation. Countdown to 00:00 UTC, practice mode for past courses (unr
 | Jump | Space | A | Jump button |
 | Dash / Slam Dash | Shift or E | X | DASH button |
 | Slide | Ctrl or C | B | SLIDE button |
-| Restart | R | Y | ↻ button |
+| Restart run / challenge | R | Y | RESTART button |
+| Back to the hub | L | Select | HUB button |

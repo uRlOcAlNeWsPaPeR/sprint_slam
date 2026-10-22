@@ -1,8 +1,8 @@
 --!nonstrict
--- Sprint Slam course preview (Studio plugin). The course is generated from data at
+-- Sprint Slam world preview (Studio plugin). The hub and course are generated from data at
 -- runtime, so an edit session would otherwise show an empty world. Whenever a Sprint Slam
--- place is open in Edit mode, this builds workspace.Course from the current source and
--- rebuilds it when course or builder code changes. The preview is never saved with the
+-- place is open in Edit mode, this builds workspace.Lobby and workspace.Course from the
+-- current source and rebuilds them when world or builder code changes. The preview is never saved with the
 -- place (Archivable = false), and Play builds the real course as usual.
 --
 -- Install: node tools/build-place.js --install-plugin
@@ -70,6 +70,10 @@ local function rebuild()
 			load(worldSetup).applyLighting()
 		end
 		load(services.CourseManager).build(nil, { Preview = true })
+		local lobbyManager = services:FindFirstChild("LobbyManager")
+		if lobbyManager then
+			load(lobbyManager).build({ Preview = true })
+		end
 	end)
 	if recording then
 		ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Commit)

@@ -20,6 +20,7 @@ local SlamController = require(script.Parent.SlamController)
 local DevAutopilot = {}
 
 local course: any = nil
+local lobby: any = nil
 local index = 1
 local previousPoint = Vector3.zero
 local driving = false
@@ -37,8 +38,9 @@ local function toStick(direction: Vector3): Vector3
 	return Vector3.new(direction:Dot(right), 0, -direction:Dot(look))
 end
 
-function DevAutopilot.init(activeCourse: any)
+function DevAutopilot.init(activeCourse: any, activeLobby: any)
 	course = activeCourse
+	lobby = activeLobby
 end
 
 function DevAutopilot.isEnabled(): boolean
@@ -128,6 +130,22 @@ local function flightStep()
 	end
 end
 
+-- In the hub: walk straight into the Sprint Slam portal.
+local function lobbyStep()
+	local root = MovementController.getRoot()
+	if not root then
+		return
+	end
+	for _, portal in lobby.Portals do
+		if portal.Mode == "SprintSlam" then
+			local target = portal.Trigger.CFrame.Position
+			local toPortal = Vector3.new(target.X - root.Position.X, 0, target.Z - root.Position.Z)
+			drive(if toPortal.Magnitude > 0.5 then toStick(toPortal.Unit) else nil)
+			return
+		end
+	end
+end
+
 -- Called by RunController each frame before movement/flight updates.
 function DevAutopilot.update(state: string)
 	if not DevAutopilot.isEnabled() then
@@ -136,7 +154,9 @@ function DevAutopilot.update(state: string)
 		end
 		return
 	end
-	if state == "Running" then
+	if state == "Lobby" then
+		lobbyStep()
+	elseif state == "Running" then
 		runStep()
 	elseif state == "Flight" then
 		flightStep()

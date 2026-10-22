@@ -1,6 +1,7 @@
 --!strict
--- One run session per player: Countdown → Running → Flight → Finished, restartable at any
--- time. The server owns every state transition that affects score.
+-- One session per player. Players spawn in the hub (Lobby); walking into the Sprint Slam
+-- portal starts Countdown → Running → Flight → Finished, restartable at any time, and they
+-- can return to the hub whenever they like. The server owns every transition that affects score.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,7 +25,7 @@ type Session = {
 	player: Player,
 	course: any,
 	runId: number,
-	state: string, -- "Idle" | "Countdown" | "Running" | "Flight" | "Finished"
+	state: string, -- "Idle" | "Lobby" | "Countdown" | "Running" | "Flight" | "Finished"
 	goTime: number,
 	validator: RunValidator.RunValidator,
 	combo: ComboTracker.ComboTracker,
@@ -40,6 +41,7 @@ type Session = {
 
 local sessions: { [Player]: Session } = {}
 local course: any
+local lobby: any
 local remotes: { [string]: RemoteEvent } = {}
 
 local function now(): number
@@ -92,6 +94,36 @@ local function startCountdown(session: Session, seconds: number, serverTeleport:
 	end
 	session.validator:expectTeleport({ spawn.Position }, t)
 	sendState(session)
+end
+
+-- Back to the hub: any run in progress is abandoned, and the run id moves on so late
+-- messages from it are ignored.
+local function enterLobby(session: Session)
+	session.runId += 1
+	session.state = "Lobby"
+	session.validator:reset()
+	session.launch = nil
+	session.serverImpact = nil
+	session.claim = nil
+	session.resolveDeadline = nil
+	if session.player.Character then
+		session.player.Character:PivotTo(lobby.Spawn)
+	end
+	sendState(session)
+end
+
+-- The player must actually be at an active portal for that mode, by the server's view.
+local function nearPortal(player: Player, mode: string): boolean
+	local root = rootOf(player)
+	if not root then
+		return false
+	end
+	for _, portal in lobby.Portals do
+		if portal.Active and portal.Mode == mode and (root.Position - portal.Trigger.CFrame.Position).Magnitude <= 30 then
+			return true
+		end
+	end
+	return false
 end
 
 local function finish(session: Session, breakdown: ScoreFormula.Breakdown, reason: string?)
@@ -195,7 +227,7 @@ local function handleEvent(session: Session, event: RunValidator.Event)
 end
 
 local function step(session: Session, dt: number)
-	if session.state == "Idle" or session.state == "Finished" then
+	if session.state == "Idle" or session.state == "Lobby" or session.state == "Finished" then
 		return
 	end
 	local t = now()
@@ -266,7 +298,7 @@ local function onPlayerAdded(player: Player)
 
 	local function onCharacter(character: Model)
 		character:WaitForChild("HumanoidRootPart")
-		task.defer(startCountdown, session, Config.Round.CountdownSeconds, true)
+		task.defer(enterLobby, session)
 	end
 	player.CharacterAdded:Connect(onCharacter)
 	player.CharacterRemoving:Connect(function()
@@ -288,7 +320,7 @@ end
 local function connectRemotes()
 	remotes.RequestRestart.OnServerEvent:Connect(function(player: Player)
 		local session = sessions[player]
-		if not session or not rootOf(player) then
+		if not session or not rootOf(player) or session.state == "Lobby" or session.state == "Idle" then
 			return
 		end
 		local t = now()
@@ -297,6 +329,22 @@ local function connectRemotes()
 		end
 		session.lastRestart = t
 		startCountdown(session, Config.Round.RestartCountdownSeconds, false)
+	end)
+
+	remotes.RequestMode.OnServerEvent:Connect(function(player: Player, mode: any)
+		local session = sessions[player]
+		if not session or typeof(mode) ~= "string" or not rootOf(player) then
+			return
+		end
+		if mode == "Lobby" then
+			if session.state ~= "Lobby" and session.state ~= "Idle" then
+				enterLobby(session)
+			end
+		elseif mode == "SprintSlam" then
+			if session.state == "Lobby" and nearPortal(player, mode) then
+				startCountdown(session, Config.Round.CountdownSeconds, true)
+			end
+		end
 	end)
 
 	remotes.RequestRespawn.OnServerEvent:Connect(function(player: Player, runId: any)
@@ -342,8 +390,9 @@ local function connectRemotes()
 	end)
 end
 
-function RunSessionService.init(activeCourse: any)
+function RunSessionService.init(activeCourse: any, activeLobby: any)
 	course = activeCourse
+	lobby = activeLobby
 	for _, name in Net.Names do
 		remotes[name] = Net.get(name)
 	end

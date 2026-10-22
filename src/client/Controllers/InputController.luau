@@ -12,6 +12,7 @@ local InputController = {}
 InputController.Dash = Signal.new()
 InputController.Slide = Signal.new()
 InputController.Restart = Signal.new()
+InputController.Lobby = Signal.new()
 
 local controls: any = nil
 
@@ -37,6 +38,7 @@ function InputController.init()
 	bind("SprintSlamDash", InputController.Dash, "DASH", UDim2.new(1, -170, 1, -150), Enum.KeyCode.LeftShift, Enum.KeyCode.E, Enum.KeyCode.ButtonX)
 	bind("SprintSlamSlide", InputController.Slide, "SLIDE", UDim2.new(1, -250, 1, -90), Enum.KeyCode.LeftControl, Enum.KeyCode.C, Enum.KeyCode.ButtonB)
 	bind("SprintSlamRestart", InputController.Restart, nil, nil, Enum.KeyCode.R, Enum.KeyCode.ButtonY)
+	bind("SprintSlamLobby", InputController.Lobby, nil, nil, Enum.KeyCode.L, Enum.KeyCode.ButtonSelect)
 end
 
 local override: Vector3? = nil
