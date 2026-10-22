@@ -105,8 +105,11 @@ src/
       UIController.luau          HUD, SLAM MODE, countdown, results
       DevAutopilot.luau          Studio-only QA bot that drives full runs through real input
   tests/    → ServerStorage.Tests      spec modules for pure shared logic
+plugin/
+  SprintSlamPreview.server.luau  Studio plugin: edit-time course preview (not saved with the place)
 tools/
-  build-place.js                 zero-dependency .rbxlx builder; --serve exposes a sync manifest
+  build-place.js                 zero-dependency .rbxlx builder; --serve exposes a sync manifest,
+                                 --install-plugin installs the preview plugin
   studio-sync.luau               pulls that manifest into an open Studio place (no Rojo needed)
 ```
 

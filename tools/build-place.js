@@ -2,10 +2,12 @@
 // Zero-dependency place builder: turns default.project.json + src/ into build/SprintSlam.rbxlx
 // using Rojo's file conventions, so the game can be opened in Studio without installing Rojo.
 //
-//   node tools/build-place.js            -> build/SprintSlam.rbxlx and build/manifest.json
-//   node tools/build-place.js --serve    -> also serves build/manifest.json on http://localhost:34873
+//   node tools/build-place.js                   -> build/SprintSlam.rbxlx and build/manifest.json
+//   node tools/build-place.js --serve           -> also serves build/manifest.json on http://localhost:34873
+//   node tools/build-place.js --install-plugin  -> also installs the edit-time course preview plugin
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const http = require("http");
 
@@ -149,7 +151,29 @@ function build() {
 	console.log(`Built build/SprintSlam.rbxlx (${scripts} scripts, ${(xml.length / 1024).toFixed(1)} KB)`);
 }
 
+// Studio loads .rbxmx files from its local plugins folder and reloads them when they change.
+function pluginsFolder() {
+	if (process.platform === "win32") return path.join(process.env.LOCALAPPDATA || "", "Roblox", "Plugins");
+	return path.join(os.homedir(), "Documents", "Roblox", "Plugins");
+}
+
+function installPlugin() {
+	referent = 0;
+	const source = fs.readFileSync(path.join(ROOT, "plugin", "SprintSlamPreview.server.luau"), "utf8");
+	const xml = `<roblox version="4">\n${itemXml({ name: "SprintSlamPreview", className: "Script", source, children: [] }, 1)}\n</roblox>\n`;
+	const built = path.join(ROOT, "build", "SprintSlamPreview.rbxmx");
+	fs.writeFileSync(built, xml);
+	const target = pluginsFolder();
+	fs.mkdirSync(target, { recursive: true });
+	fs.copyFileSync(built, path.join(target, "SprintSlamPreview.rbxmx"));
+	console.log(`Installed course preview plugin to ${path.join(target, "SprintSlamPreview.rbxmx")}`);
+}
+
 build();
+
+if (process.argv.includes("--install-plugin")) {
+	installPlugin();
+}
 
 if (process.argv.includes("--serve")) {
 	const port = 34873;

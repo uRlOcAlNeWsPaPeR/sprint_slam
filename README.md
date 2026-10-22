@@ -21,8 +21,20 @@ No tooling is required:
 node tools/build-place.js
 ```
 
-Then open `build/SprintSlam.rbxlx` in Roblox Studio and press **Play**. The course is built
-from data at runtime, so it only appears in play mode.
+Then open `build/SprintSlam.rbxlx` in Roblox Studio and press **Play**.
+
+The course is generated from data at runtime. To see it in the edit view too, install the
+preview plugin once:
+
+```bash
+node tools/build-place.js --install-plugin
+```
+
+This copies `SprintSlamPreview.rbxmx` into Studio's local plugins folder
+(`~/Documents/Roblox/Plugins` on macOS). Whenever a Sprint Slam place is open in Edit mode,
+the plugin builds the course and rebuilds it when course code changes. It also adds a
+**Sprint Slam → Rebuild Course** toolbar button. The preview is never saved into the place,
+and Play builds the real course as usual. Delete that file to uninstall.
 
 For live sync without Rojo, keep `node tools/build-place.js --serve` running and run
 [tools/studio-sync.luau](tools/studio-sync.luau) from Studio's command bar after each change.

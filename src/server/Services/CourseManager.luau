@@ -390,7 +390,10 @@ local function buildTarget(course: any, parent: Instance)
 	model.Parent = parent
 end
 
-function CourseManager.build(courseId: string?)
+-- options.Preview: edit-time preview (Studio plugin). The folder is not saved with the
+-- place and the live course is not published, since the server rebuilds it on Play.
+function CourseManager.build(courseId: string?, options: { Preview: boolean? }?)
+	local preview = options ~= nil and options.Preview == true
 	local course = Courses.get(courseId)
 	local existing = workspace:FindFirstChild("Course")
 	if existing then
@@ -411,6 +414,11 @@ function CourseManager.build(courseId: string?)
 	buildDecor(course, root)
 	buildTarget(course, root)
 	root:SetAttribute("CourseId", course.Id)
+	if preview then
+		root.Archivable = false
+		root.Parent = workspace
+		return course
+	end
 	root.Parent = workspace
 
 	ReplicatedStorage:SetAttribute("ActiveCourse", course.Id)

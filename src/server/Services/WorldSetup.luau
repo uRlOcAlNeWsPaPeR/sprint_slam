@@ -12,7 +12,7 @@ local WorldSetup = {}
 
 WorldSetup.RunnerGroup = "Runners"
 
-local function setLighting()
+function WorldSetup.applyLighting()
 	Lighting.ClockTime = 19.6
 	Lighting.Brightness = 2
 	Lighting.Ambient = Color3.fromRGB(70, 78, 104)
@@ -79,7 +79,7 @@ local function setPlayerDefaults()
 end
 
 function WorldSetup.init()
-	setLighting()
+	WorldSetup.applyLighting()
 	setCollisionGroups()
 	setPlayerDefaults()
 
