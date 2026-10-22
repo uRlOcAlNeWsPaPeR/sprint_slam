@@ -99,6 +99,9 @@ local speedScale: UIScale
 local speedValue: TextLabel
 local speedCaption: TextLabel
 local speedFill: Frame
+local momentumValue: TextLabel
+local momentumFill: Frame
+local coinsLabel: TextLabel
 local dashPill: Frame
 local dashFill: Frame
 local dashLabel: TextLabel
@@ -228,6 +231,17 @@ local function buildCorners(parent: Instance)
 		Text = "SESSION BEST  -",
 		Parent = parent,
 	})
+	coinsLabel = label({
+		Name = "Coins",
+		Position = UDim2.fromOffset(24, 68),
+		Size = UDim2.fromOffset(300, 20),
+		FontFace = HEAVY,
+		TextSize = 17,
+		TextColor3 = Palette.Orange,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "COINS  0",
+		Parent = parent,
+	})
 	local restart = new("TextButton", {
 		Name = "Restart",
 		AnchorPoint = Vector2.new(1, 0),
@@ -253,7 +267,7 @@ local function buildSpeed(parent: Instance)
 		Name = "Speed",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -26),
-		Size = UDim2.fromOffset(340, 150),
+		Size = UDim2.fromOffset(340, 186),
 		BackgroundTransparency = 1,
 		Parent = parent,
 	})
@@ -306,10 +320,57 @@ local function buildSpeed(parent: Instance)
 		BorderSizePixel = 0,
 		Parent = bar,
 	})
+	-- Momentum = average speed over the whole run; it sets launch speed and impact power.
+	local momentumRow = new("Frame", {
+		Name = "Momentum",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 116),
+		Size = UDim2.fromOffset(300, 34),
+		BackgroundTransparency = 1,
+		Parent = speedFrame,
+	})
+	label({
+		Name = "Caption",
+		Size = UDim2.new(0.6, 0, 0, 18),
+		FontFace = HEAVY,
+		TextSize = 15,
+		TextColor3 = Palette.Cyan,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "MOMENTUM",
+		Parent = momentumRow,
+	})
+	momentumValue = label({
+		Name = "Value",
+		Position = UDim2.fromScale(0.6, 0),
+		Size = UDim2.new(0.4, 0, 0, 18),
+		FontFace = MONO,
+		TextSize = 17,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Text = "0",
+		Parent = momentumRow,
+	})
+	local momentumBar = new("Frame", {
+		Name = "Bar",
+		Position = UDim2.fromOffset(0, 22),
+		Size = UDim2.new(1, 0, 0, 10),
+		BackgroundColor3 = Palette.Panel,
+		Children = { corner(5), stroke(Palette.Cyan, 1, 0.6) },
+		Parent = momentumRow,
+	})
+	momentumFill = new("Frame", {
+		Name = "Fill",
+		Size = UDim2.fromScale(0, 1),
+		BackgroundColor3 = Palette.White,
+		Children = {
+			corner(5),
+			new("UIGradient", { Color = ColorSequence.new(Palette.Cyan, Palette.Orange) }),
+		},
+		Parent = momentumBar,
+	})
 	dashPill = new("Frame", {
 		Name = "Dash",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 118),
+		Position = UDim2.new(0.5, 0, 0, 158),
 		Size = UDim2.fromOffset(150, 26),
 		BackgroundColor3 = Palette.Panel,
 		ClipsDescendants = true,
@@ -538,7 +599,7 @@ local function buildResults(parent: Instance)
 		Name = "Results",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(520, 500),
+		Size = UDim2.fromOffset(540, 640),
 		BackgroundColor3 = Palette.Charcoal,
 		BackgroundTransparency = 0.04,
 		GroupTransparency = 1,
@@ -576,13 +637,15 @@ local function buildResults(parent: Instance)
 		Parent = body,
 	})
 	new("Frame", { Name = "Gap", LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 6), BackgroundTransparency = 1, Parent = body })
-	resultRow(body, 3, "Impact Speed")
-	resultRow(body, 4, "Accuracy")
-	resultRow(body, 5, "Time Bonus")
-	resultRow(body, 6, "Combo Bonus")
+	resultRow(body, 3, "Momentum")
+	resultRow(body, 4, "Impact Speed")
+	resultRow(body, 5, "Impact Power")
+	resultRow(body, 6, "Accuracy")
+	resultRow(body, 7, "Time Bonus")
+	resultRow(body, 8, "Combo Bonus")
 	new("Frame", {
 		Name = "Divider",
-		LayoutOrder = 7,
+		LayoutOrder = 9,
 		Size = UDim2.new(1, 0, 0, 2),
 		BackgroundColor3 = Palette.Cyan,
 		BackgroundTransparency = 0.6,
@@ -591,7 +654,7 @@ local function buildResults(parent: Instance)
 	})
 	label({
 		Name = "FinalCaption",
-		LayoutOrder = 8,
+		LayoutOrder = 10,
 		Size = UDim2.new(1, 0, 0, 24),
 		FontFace = BOLD,
 		TextSize = 18,
@@ -601,7 +664,7 @@ local function buildResults(parent: Instance)
 	})
 	label({
 		Name = "Final",
-		LayoutOrder = 9,
+		LayoutOrder = 11,
 		Size = UDim2.new(1, 0, 0, 72),
 		FontFace = HEAVY,
 		TextSize = 72,
@@ -610,8 +673,18 @@ local function buildResults(parent: Instance)
 		Parent = body,
 	})
 	label({
+		Name = "CoinsEarned",
+		LayoutOrder = 12,
+		Size = UDim2.new(1, 0, 0, 28),
+		FontFace = HEAVY,
+		TextSize = 24,
+		TextColor3 = Palette.Orange,
+		Text = "",
+		Parent = body,
+	})
+	label({
 		Name = "Banner",
-		LayoutOrder = 10,
+		LayoutOrder = 13,
 		Size = UDim2.new(1, 0, 0, 30),
 		FontFace = HEAVY,
 		TextSize = 26,
@@ -621,7 +694,7 @@ local function buildResults(parent: Instance)
 	})
 	local button = new("TextButton", {
 		Name = "Again",
-		LayoutOrder = 11,
+		LayoutOrder = 14,
 		Size = UDim2.fromOffset(260, 50),
 		BackgroundColor3 = Palette.Orange,
 		AutoButtonColor = true,
@@ -679,6 +752,12 @@ function UIController.init(activeCourse: any)
 end
 
 -- Public API ----------------------------------------------------------------------------
+
+function UIController.setCoins(balance: number?)
+	if balance then
+		coinsLabel.Text = "COINS  " .. tostring(balance)
+	end
+end
 
 function UIController.setBest(score: number?)
 	bestLabel.Text = if score then "SESSION BEST  " .. tostring(score) else "SESSION BEST  -"
@@ -790,6 +869,7 @@ export type HudInfo = {
 	ComboMultiplier: number,
 	ComboWindow: number,
 	ComboTotal: number,
+	Momentum: number,
 	Progress: number,
 	Prediction: { TimeToImpact: number, Zone: string }?,
 }
@@ -808,6 +888,8 @@ function UIController.update(info: HudInfo)
 	speedValue.TextColor3 = if slamMode or overspeed then Palette.Orange else Palette.White
 	speedCaption.Text = if inFlight then "IMPACT SPEED" else "SPEED"
 	speedFill.Size = UDim2.fromScale(math.clamp(info.Speed / Config.Movement.OverspeedCap, 0, 1), 1)
+	momentumValue.Text = tostring(math.floor(info.Momentum + 0.5))
+	momentumFill.Size = UDim2.fromScale(math.clamp(info.Momentum / Config.Momentum.MeterMax, 0, 1), 1)
 
 	if inFlight then
 		dashFill.Size = UDim2.fromScale(if info.SlamDashAvailable then 1 else 0, 1)
@@ -819,7 +901,7 @@ function UIController.update(info: HudInfo)
 			predictionLabel.Text = string.format("%s LINE   %.2fs", prediction.Zone, prediction.TimeToImpact)
 			predictionLabel.TextColor3 = if prediction.Zone == "BULLSEYE"
 				then Palette.Orange
-				elseif prediction.Zone == "MISS" then Palette.Muted
+				elseif prediction.Zone == "WALL" then Palette.Muted
 				else Palette.White
 		end
 	else
@@ -850,6 +932,8 @@ function UIController.update(info: HudInfo)
 		end
 	end
 end
+
+local RESULT_ROWS = { "Momentum", "Impact Speed", "Impact Power", "Accuracy", "Time Bonus", "Combo Bonus" }
 
 local function setRow(name: string, value: string, color: Color3?)
 	local body = results:FindFirstChild("Body") :: Frame
@@ -896,11 +980,12 @@ function UIController.showVerifying()
 	results.Visible = true
 	local body = results:FindFirstChild("Body") :: Frame
 	(body:FindFirstChild("Title") :: TextLabel).Text = "VERIFYING..."
-	for _, name in { "Impact Speed", "Accuracy", "Time Bonus", "Combo Bonus" } do
+	for _, name in RESULT_ROWS do
 		setRow(name, "...", Palette.Muted)
 	end
 	(body:FindFirstChild("Final") :: TextLabel).Text = "-"
 	(body:FindFirstChild("Banner") :: TextLabel).Text = ""
+	(body:FindFirstChild("CoinsEarned") :: TextLabel).Text = ""
 	results.GroupTransparency = 0.2
 end
 
@@ -912,6 +997,7 @@ function UIController.showResults(payload: any)
 	local title = body:FindFirstChild("Title") :: TextLabel
 	local final = body:FindFirstChild("Final") :: TextLabel
 	local banner = body:FindFirstChild("Banner") :: TextLabel
+	local coinsEarned = body:FindFirstChild("CoinsEarned") :: TextLabel
 
 	results.Visible = true
 	UIController.setSlamMode(false)
@@ -921,8 +1007,9 @@ function UIController.showResults(payload: any)
 	tween(results, 0.3, { GroupTransparency = 0 })
 	tween(resultsScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
 	banner.Text = ""
+	coinsEarned.Text = ""
 	final.Text = "0"
-	for _, name in { "Impact Speed", "Accuracy", "Time Bonus", "Combo Bonus" } do
+	for _, name in RESULT_ROWS do
 		setRow(name, "", nil)
 	end
 
@@ -943,13 +1030,15 @@ function UIController.showResults(payload: any)
 
 	title.Text = "SPRINT COMPLETE"
 	title.TextColor3 = Palette.White
-	local zoneLabel = if breakdown.Zone == "MISS" then "MISS (0x)" else string.format("%s (%sx)", breakdown.Zone, tostring(breakdown.Multiplier))
-	local zoneColor = if breakdown.Zone == "BULLSEYE" then Palette.Orange elseif breakdown.Zone == "MISS" then Palette.Muted else Palette.Cyan
+	local zoneLabel = string.format("%s  x%s", breakdown.Zone, tostring(breakdown.Multiplier))
+	local zoneColor = if breakdown.Zone == "BULLSEYE" then Palette.Orange elseif breakdown.Zone == "WALL" then Palette.Muted else Palette.Cyan
 
 	task.spawn(function()
 		task.wait(0.25)
 		revealRows({
-			{ "Impact Speed", tostring(breakdown.ImpactSpeed) },
+			{ "Momentum", string.format("%d st/s avg", breakdown.Momentum) },
+			{ "Impact Speed", string.format("%d st/s", breakdown.ImpactSpeed) },
+			{ "Impact Power", tostring(breakdown.ImpactPower), Palette.Cyan },
 			{ "Accuracy", zoneLabel, zoneColor },
 			{ "Time Bonus", "+" .. tostring(breakdown.TimeBonus) },
 			{ "Combo Bonus", "+" .. tostring(breakdown.ComboBonus) },
@@ -964,6 +1053,9 @@ function UIController.showResults(payload: any)
 		local scale = final:FindFirstChildOfClass("UIScale") or new("UIScale", { Parent = final })
 		scale.Scale = 1.25
 		tween(scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+		if (payload.Coins or 0) > 0 then
+			coinsEarned.Text = string.format("+%d COINS", payload.Coins)
+		end
 		if payload.IsNewBest then
 			banner.Text = "NEW PERSONAL BEST!"
 			banner.TextColor3 = Palette.Orange

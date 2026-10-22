@@ -19,7 +19,7 @@ export type Event = {
 	Index: number?,
 	Name: string?,
 	Point: Vector3?,
-	Speed: number?,
+	Speed: number?, -- Impact: speed driving into the wall (normal component)
 }
 
 local RunValidator = {}
@@ -34,6 +34,7 @@ export type RunValidator = typeof(setmetatable(
 		nextCheckpoint: number,
 		shortcutsHit: { [string]: boolean },
 		expectNear: { Vector3 }?,
+		runDistance: number,
 		expectDeadline: number,
 	},
 	RunValidator
@@ -47,6 +48,7 @@ function RunValidator.new(course: any): RunValidator
 		invalidReason = nil,
 		nextCheckpoint = 2,
 		shortcutsHit = {},
+		runDistance = 0,
 		expectNear = nil,
 		expectDeadline = 0,
 	}, RunValidator)
@@ -59,6 +61,7 @@ function RunValidator.reset(self: RunValidator)
 	self.invalidReason = nil
 	self.nextCheckpoint = 2
 	table.clear(self.shortcutsHit)
+	self.runDistance = 0
 	self.expectNear = nil
 end
 
@@ -183,6 +186,11 @@ function RunValidator.sample(self: RunValidator, now: number, position: Vector3,
 
 	local course = self.course
 	if phase == "Running" then
+		-- Horizontal distance for momentum; each step is capped at a plausible speed, and
+		-- teleports never count because the sample history is cleared around them.
+		local step = horizontal(position - previous.p).Magnitude
+		self.runDistance += math.min(step, V.MaxRunSpeed * (now - previous.t))
+
 		local gate = course.Checkpoints[self.nextCheckpoint]
 		if gate and Geometry.segmentIntersectsBox(previous.p, position, gate.CFrame, gate.Size) then
 			table.insert(events, { Type = "Checkpoint", Time = now, Index = self.nextCheckpoint })
@@ -203,12 +211,10 @@ function RunValidator.sample(self: RunValidator, now: number, position: Vector3,
 			local lateral = offset - launch.Forward * offset:Dot(launch.Forward)
 			lateral = Vector3.new(lateral.X, 0, lateral.Z)
 			if lateral.Magnitude <= launch.HalfWidth and math.abs(offset.Y) <= launch.HeightRange then
-				local approach = self:windowVelocity(V.LaunchApproachWindow)
 				table.insert(events, {
 					Type = "Launch",
 					Time = previous.t + (now - previous.t) * fraction,
 					Point = point,
-					Speed = if approach then horizontal(approach).Magnitude else 0,
 				})
 			end
 		end
@@ -222,7 +228,7 @@ function RunValidator.sample(self: RunValidator, now: number, position: Vector3,
 				Type = "Impact",
 				Time = previous.t + (now - previous.t) * fraction,
 				Point = point,
-				Speed = if impactVelocity then impactVelocity.Magnitude else 0,
+				Speed = if impactVelocity then math.max(-impactVelocity:Dot(target.Normal), 0) else 0,
 			})
 		end
 	end
@@ -245,7 +251,7 @@ function RunValidator.extrapolateImpact(self: RunValidator): (Vector3?, number?)
 	if distance < 0 or distance > V.ImpactExtrapolate or closing <= 1 then
 		return nil, nil
 	end
-	return newest.p + velocity * (distance / closing), velocity.Magnitude
+	return newest.p + velocity * (distance / closing), closing
 end
 
 return RunValidator

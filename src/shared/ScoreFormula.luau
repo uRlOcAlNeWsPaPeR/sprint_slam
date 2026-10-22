@@ -1,6 +1,9 @@
 --!strict
 -- Pure scoring math shared by the server (authoritative) and client (instant preview).
--- Final = round(ImpactSpeed × SpeedScorePerStud × ZoneMultiplier) + TimeBonus + ComboBonus
+--   ImpactPower = ImpactSpeed² ÷ PowerDivisor          (impact energy: speed counts twice)
+--   SlamScore   = round(ImpactPower × ZoneMultiplier)
+--   Final       = SlamScore + TimeBonus + ComboBonus
+--   Coins       = SlamScore ÷ CoinDivisor
 
 local Config = require(script.Parent.Config)
 
@@ -8,14 +11,17 @@ export type Zone = { Name: string, Radius: number?, Multiplier: number }
 
 export type Breakdown = {
 	Outcome: string, -- "Impact" | "TimeUp" | "Invalid"
+	Momentum: number,
 	ImpactSpeed: number,
-	SpeedScore: number,
+	ImpactPower: number,
 	Zone: string,
 	Multiplier: number,
+	SlamScore: number,
 	TimeRemaining: number,
 	TimeBonus: number,
 	ComboBonus: number,
 	Final: number,
+	Coins: number,
 }
 
 local ScoreFormula = {}
@@ -26,7 +32,7 @@ function ScoreFormula.zoneForRadius(radius: number): Zone
 			return zone
 		end
 	end
-	return Config.Target.Miss
+	return Config.Target.Wall
 end
 
 function ScoreFormula.zoneByName(name: string): Zone
@@ -35,7 +41,11 @@ function ScoreFormula.zoneByName(name: string): Zone
 			return zone
 		end
 	end
-	return Config.Target.Miss
+	return Config.Target.Wall
+end
+
+function ScoreFormula.impactPower(impactSpeed: number): number
+	return math.floor(impactSpeed * impactSpeed / Config.Score.PowerDivisor + 0.5)
 end
 
 function ScoreFormula.timeBonus(timeRemaining: number): number
@@ -48,39 +58,37 @@ function ScoreFormula.compute(input: {
 	Zone: Zone?,
 	TimeRemaining: number?,
 	ComboBonus: number?,
+	Momentum: number?,
 }): Breakdown
-	local outcome = input.Outcome
-	local zone = input.Zone or Config.Target.Miss
-	local impactSpeed = math.floor((input.ImpactSpeed or 0) + 0.5)
+	local zone = input.Zone or Config.Target.Wall
+	local impactSpeed = math.max(input.ImpactSpeed or 0, 0)
 	local timeRemaining = math.max(input.TimeRemaining or 0, 0)
-	local comboBonus = math.clamp(math.floor(input.ComboBonus or 0), 0, Config.Score.MaxComboBonus)
 
 	local breakdown: Breakdown = {
-		Outcome = outcome,
-		ImpactSpeed = impactSpeed,
-		SpeedScore = math.floor(impactSpeed * Config.Score.SpeedScorePerStud + 0.5),
+		Outcome = input.Outcome,
+		Momentum = math.floor((input.Momentum or 0) + 0.5),
+		ImpactSpeed = math.floor(impactSpeed + 0.5),
+		ImpactPower = 0,
 		Zone = zone.Name,
-		Multiplier = zone.Multiplier,
+		Multiplier = 0,
+		SlamScore = 0,
 		TimeRemaining = timeRemaining,
-		TimeBonus = ScoreFormula.timeBonus(timeRemaining),
-		ComboBonus = comboBonus,
+		TimeBonus = 0,
+		ComboBonus = 0,
 		Final = 0,
+		Coins = 0,
 	}
-
-	if outcome ~= "Impact" then
-		breakdown.SpeedScore = 0
-		breakdown.TimeBonus = 0
-		breakdown.ComboBonus = 0
-		breakdown.Multiplier = 0
+	if input.Outcome ~= "Impact" then
 		return breakdown
 	end
 
-	local slam = math.floor(breakdown.SpeedScore * zone.Multiplier + 0.5)
-	local bonuses = breakdown.TimeBonus + breakdown.ComboBonus
-	if zone.Multiplier <= 0 and not Config.Score.MissKeepsBonuses then
-		bonuses = 0
-	end
-	breakdown.Final = slam + bonuses
+	breakdown.ImpactPower = ScoreFormula.impactPower(impactSpeed)
+	breakdown.Multiplier = zone.Multiplier
+	breakdown.SlamScore = math.floor(breakdown.ImpactPower * zone.Multiplier + 0.5)
+	breakdown.TimeBonus = ScoreFormula.timeBonus(timeRemaining)
+	breakdown.ComboBonus = math.clamp(math.floor(input.ComboBonus or 0), 0, Config.Score.MaxComboBonus)
+	breakdown.Final = breakdown.SlamScore + breakdown.TimeBonus + breakdown.ComboBonus
+	breakdown.Coins = math.floor(breakdown.SlamScore / Config.Score.CoinDivisor)
 	return breakdown
 end
 

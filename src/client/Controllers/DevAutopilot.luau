@@ -4,10 +4,14 @@
 -- end to end, server scoring included. Enable from the Studio client:
 --   game.Players.LocalPlayer:SetAttribute("Autopilot", true)       -- run once per restart
 --   game.Players.LocalPlayer:SetAttribute("AutopilotLoop", true)   -- restart after results
+--   game.Players.LocalPlayer:SetAttribute("AutopilotStyle", "Crawl") -- how it paces the run:
+--     Sprint (default) | Crawl (~45 st/s, no dash) | LateBurst (crawl, then sprint the slam
+--     runway) | Coast (sprint, then ease off on the slam runway to aim)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+local CourseController = require(script.Parent.CourseController)
 local DashController = require(script.Parent.DashController)
 local InputController = require(script.Parent.InputController)
 local MovementController = require(script.Parent.MovementController)
@@ -86,6 +90,17 @@ local function runStep()
 		end
 		previousPoint = waypoint.Position
 		index += 1
+		return
+	end
+
+	-- Pacing styles let QA compare how momentum rewards (or doesn't) different runs.
+	local style = Players.LocalPlayer:GetAttribute("AutopilotStyle") or "Sprint"
+	local inSlamZone = CourseController.getProgress() >= course.SlamModeDistance
+	local holdBack = style == "Crawl" or (style == "LateBurst" and not inSlamZone) or (style == "Coast" and inSlamZone)
+	local speedLimit = if style == "Coast" then 28 else 45
+	if holdBack then
+		local overLimit = MovementController.getActualSpeed() > speedLimit and MovementController.isGrounded()
+		drive(if overLimit then Vector3.zero else toStick(toWaypoint.Unit))
 		return
 	end
 

@@ -1,5 +1,5 @@
 --!strict
--- The Final Slam. Launch speed comes from approach speed; flight uses its own gravity,
+-- The Final Slam. Launch speed comes from run momentum; flight uses its own gravity,
 -- limited steering, a predicted-impact reticle and a one-shot Slam Dash. The impact
 -- freezes the runner (hit-stop) and fires the effects; the server decides the score.
 
@@ -9,6 +9,7 @@ local TweenService = game:GetService("TweenService")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Geometry = require(Shared.Geometry)
+local Momentum = require(Shared.Momentum)
 local ScoreFormula = require(Shared.ScoreFormula)
 local Signal = require(Shared.Signal)
 
@@ -50,7 +51,7 @@ local impacted = false
 local reticleRing: BasePart? = nil
 local reticleDot: BasePart? = nil
 local zoneParts: { { part: BasePart, base: CFrame } } = {}
-local prediction = { TimeToImpact = 0, Zone = "MISS", Radius = math.huge, Point = Vector3.zero }
+local prediction = { TimeToImpact = 0, Zone = "WALL", Radius = math.huge, Point = Vector3.zero }
 
 local function serverNow(): number
 	return workspace:GetServerTimeNow()
@@ -66,7 +67,7 @@ local function zoneColor(zoneName: string): Color3
 		return Palette.Orange
 	elseif zoneName == "INNER" then
 		return Palette.Cyan
-	elseif zoneName == "MISS" then
+	elseif zoneName == "WALL" then
 		return Palette.Muted
 	end
 	return Palette.White
@@ -133,7 +134,15 @@ function SlamController.canSlamDash(): boolean
 	return flight ~= nil and not flight.slamDashUsed
 end
 
-function SlamController.begin(approachSpeed: number)
+-- Speed driving into the wall right now; this is what impact power is scored on.
+function SlamController.getImpactSpeed(): number
+	if not flight then
+		return 0
+	end
+	return math.max(-flight.velocity:Dot(course.Target.Normal), 0)
+end
+
+function SlamController.begin(momentum: number)
 	local root = MovementController.getRoot()
 	local humanoid = MovementController.getHumanoid()
 	if not root or not humanoid or flight then
@@ -144,7 +153,7 @@ function SlamController.begin(approachSpeed: number)
 	local forward: Vector3 = launch.Forward
 	local right = forward:Cross(Vector3.yAxis).Unit
 	local pitch = math.rad(S.LaunchPitchDeg)
-	local launchSpeed = math.clamp(approachSpeed * S.LaunchSpeedMultiplier, S.MinLaunchSpeed, S.MaxLaunchSpeed)
+	local launchSpeed = Momentum.launchSpeed(momentum)
 	local velocity = (forward * math.cos(pitch) + Vector3.yAxis * math.sin(pitch)) * launchSpeed
 
 	MovementController.setEnabled(false)
@@ -209,7 +218,7 @@ local function updatePrediction(f: Flight)
 	local t = timeToPlane(f.root.Position, f.velocity)
 	if not t then
 		prediction.TimeToImpact = 0
-		prediction.Zone = "MISS"
+		prediction.Zone = "WALL"
 		SlamController.hideReticle()
 		return
 	end
@@ -347,7 +356,7 @@ local function popup(point: Vector3, zoneName: string, color: Color3, score: num
 	zoneLabel.Size = UDim2.new(1, 0, 0.55, 0)
 	zoneLabel.Font = Enum.Font.GothamBlack
 	zoneLabel.TextScaled = true
-	zoneLabel.Text = if zoneName == "MISS" then "MISS" else zoneName .. "!"
+	zoneLabel.Text = if zoneName == "WALL" then "WALL HIT" else zoneName .. "!"
 	zoneLabel.TextColor3 = color
 	zoneLabel.Parent = gui
 	local stroke = Instance.new("UIStroke")
@@ -380,10 +389,10 @@ local function onImpact(f: Flight, point: Vector3)
 	impacted = true
 	local target = course.Target
 	local normal: Vector3 = target.Normal
-	local speed = f.velocity.Magnitude
+	local speed = math.max(-f.velocity:Dot(normal), 0)
 	local _, radius = Geometry.targetOffset(point, target.Center, target.Normal)
 	local zone = ScoreFormula.zoneForRadius(radius)
-	local provisional = math.floor(speed * Config.Score.SpeedScorePerStud * zone.Multiplier + 0.5)
+	local provisional = math.floor(ScoreFormula.impactPower(speed) * zone.Multiplier + 0.5)
 
 	SlamController.hideReticle()
 	-- Hit-stop: hold the runner just past the plane with the flight constraints at zero

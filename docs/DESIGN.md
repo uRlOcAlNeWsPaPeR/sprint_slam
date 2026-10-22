@@ -3,32 +3,54 @@
 **RUN. BOOST. SLAM. REPEAT.**
 
 A solo-attempt arcade sprint: 45 seconds to run a short neon course, build momentum,
-launch off a ramp, and slam into a giant vertical target. Speed sets the base score,
-precision sets the multiplier.
+launch off a ramp, and slam into a giant vertical target. **The goal is to go as fast as
+possible for the whole run**. Momentum sets how hard you hit the wall, and precision is a
+bonus on top.
 
 ---
 
 ## 1. Concept analysis
 
-The whole game hangs on one tension: **speed versus precision.**
+### Momentum, not last-second speed
 
-- Speed comes from clean movement: carving instead of snap-turning, chaining dashes into
-  boost pads, landing jumps cleanly, sliding down slopes.
-- At the end of the course, all that speed becomes launch velocity. During the slam flight
-  you steer a reticle onto the target. Fast launches score more, but leave less time to aim.
-- The target multiplier (1x / 1.5x / 2x / 3x) means a precise slow run can beat a sloppy
-  fast one, and a run that is both fast and precise wins by a lot.
+- **Momentum = your average horizontal speed over the whole run** (distance ÷ time since GO),
+  measured by the server from its own position samples. Every second counts equally:
+  bonks, respawns and slow sections anywhere cost momentum, and a burst at the end only
+  counts for its share of the run.
+- **Launch speed = momentum × 1.8** (clamped 70–155). Your speed at the lip does not matter.
+  So easing off before the ramp does not buy a slower, easier flight, and a late sprint does
+  not buy a fast one.
+- **Impact speed = the speed you drive into the wall**: the launch's horizontal part, plus
+  Slam Dash. Steering and gravity move you *along* the wall, so they never add to it.
+- **Impact power = impact speed² ÷ 20.** Like impact energy, speed counts twice: 2× the
+  momentum gives roughly 4× the power.
 
-The **slam flight** is what makes the final slam a skill rather than a dice roll:
+### Scoring
 
-1. Launching off the lip turns approach speed into launch speed (`x1.45`, clamped 70–150).
-2. The flight uses its own gravity (20 st/s²) and a fixed 18° pitch. A natural, unsteered
-   trajectory hits the bullseye at about 105 st/s launch, too low when slower, too high when faster.
-3. The player steers with the move input (limited acceleration). A reticle shows where they
+```
+Slam score = Impact power × Zone        (Bullseye 2x · Inner 1.6x · Middle 1.3x · Outer 1x · Wall 0.5x)
+Final      = Slam score + Time bonus (10/s left at launch) + Combo bonus (≤ 600)
+Coins      = Slam score ÷ 40            (verified impacts only)
+```
+
+Accuracy is deliberately a narrow multiplier, so a fast run that only clips the outer ring
+beats a slow, perfect bullseye. Measured with the QA bot:
+
+| Run style | Momentum | Impact | Power | Zone | Final | Coins |
+|---|---:|---:|---:|---|---:|---:|
+| Sprint the whole run | 74 | 147 | 1074 | Bullseye | 2684 | 53 |
+| Sprint, then ease off on the slam runway to aim | 50 | 99 | 486 | Bullseye | 1291 | 24 |
+| Crawl, then sprint and dash the slam runway | 45 | 87 | 380 | Bullseye | 1107 | 19 |
+
+### The slam flight
+
+1. Launch at momentum-derived speed with a fixed 18° pitch and its own gravity (20 st/s²).
+   An unsteered flight hits the bullseye at about 105 st/s launch (≈ 58 momentum). Slower
+   runs drop low, faster ones fly high and must steer down with less time to do it.
+2. The player steers with the move input (limited acceleration). A reticle shows where they
    will hit if they stop steering.
-4. **Slam Dash**: one in-flight dash that adds 15–35% speed. It is worth more the earlier you
-   use it, but it flattens your arc and cuts steering to 35%. Committing early is the
-   high-skill play.
+3. **Slam Dash**: one in-flight dash that adds 6–15% speed. It is worth more the earlier you
+   use it, but it flattens your arc and cuts steering to 35%.
 
 Every run ends at the wall, so no run ends without a score.
 
@@ -76,6 +98,7 @@ src/
     Config.luau                  ALL tuning values (movement, dash, slam, score, validation)
     ScoreFormula.luau            pure scoring function (server + client preview)
     ComboTracker.luau            pure combo chain logic (server + client)
+    Momentum.luau                run-average speed → launch speed → impact speed (server + client)
     Geometry.luau                plane crossings, OBB tests, path projection
     Net.luau                     RemoteEvent registry
     Signal.luau                  tiny signal class
@@ -90,6 +113,7 @@ src/
       RunSessionService.luau     per-player run state machine + remotes
       RunValidator.luau          sampling, gate crossing, plausibility, impact detection
       ScoreService.luau          authoritative scoring, session bests
+      WalletService.luau         coin balances (DataStore, session fallback)
   client/   → StarterPlayer.StarterPlayerScripts.Client
     Main.client.luau             bootstrap + single ordered update loop
     Controllers/
@@ -123,14 +147,16 @@ matching client controllers.
 - Momentum movement: acceleration curve, carving turn-rate limit, reversal braking, collision
   speed loss, slope gain/loss, slide (+drift), jump with perfect-landing window.
 - Dash: cooldown, boost-chain timing window, air dash, cooldown refresh from pads/rings.
+- Momentum: run-average speed (server-measured) drives launch speed, impact power and coins.
 - Course "Neon Rush": runway with boost pads, jump gap, split section (moving blocks vs. an
   elevated shortcut beam reached by a jump pad), downhill speed ramp, S-bend, pillar gauntlet
   (weave it or thread a 3-stud straight line), gap with an apex-timing boost ring, slam runway,
   launch ramp, and target wall.
-- Slam flight with steering, reticle, Slam Dash, and zones (Bullseye 3x / Inner 2x /
-  Middle 1.5x / Outer 1x / Miss 0x).
+- Slam flight with steering, reticle, Slam Dash, and zones (Bullseye 2x / Inner 1.6x /
+  Middle 1.3x / Outer 1x / Wall 0.5x) applied to impact power.
 - 45 s timer (stops at launch), 3 s countdown, instant restart (R / ButtonY / HUD button).
 - Server validation and authoritative score breakdown; session personal best and splits.
+- Coins from verified impacts (`WalletService`, DataStore-backed; session-only in unpublished places).
 - Functional HUD, basic impact FX (hit-stop, shockwave, burst, target pulse, shake, popup).
 - Verification: spec suite for scoring/combos/geometry/server reconciliation, plus the Studio
   autopilot. It runs whole laps through the real input path, server scoring included.

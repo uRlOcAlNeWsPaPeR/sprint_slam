@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Geometry = require(Shared.Geometry)
+local Momentum = require(Shared.Momentum)
 local ScoreFormula = require(Shared.ScoreFormula)
 
 local V = Config.Validation
@@ -17,13 +18,11 @@ local ScoreService = {}
 type Best = { Score: number, Splits: { number }, Breakdown: any }
 local bests: { [number]: Best } = {}
 
-local function launchSpeedFor(approachSpeed: number): number
-	return math.clamp(approachSpeed * Config.Slam.LaunchSpeedMultiplier, Config.Slam.MinLaunchSpeed, Config.Slam.MaxLaunchSpeed)
-end
-
--- Highest impact speed physically reachable from the approach speed the server observed.
-function ScoreService.impactSpeedCap(approachSpeed: number): number
-	return launchSpeedFor(approachSpeed) * (1 + Config.Slam.SlamDashMaxBonus) * 1.1 + 25
+-- Highest impact speed reachable from the momentum the server measured, with an early
+-- Slam Dash and tolerance for the client's slightly different measurement.
+function ScoreService.impactSpeedCap(serverMomentum: number): number
+	local momentum = serverMomentum * V.MomentumTolerance + V.MomentumSlack
+	return Momentum.impactSpeed(Momentum.launchSpeed(momentum), Config.Slam.SlamDashMaxBonus)
 end
 
 local function boosterPositions(course: any, kind: string): { Vector3 }
@@ -63,7 +62,7 @@ end
 export type ImpactInputs = {
 	course: any,
 	goTime: number,
-	launch: { Time: number, Speed: number },
+	launch: { Time: number, Momentum: number },
 	serverImpact: { Point: Vector3, Speed: number }?,
 	claim: { Point: Vector3, Speed: number, LaunchTime: number }?,
 	extrapolated: { Point: Vector3, Speed: number }?,
@@ -84,7 +83,7 @@ function ScoreService.scoreImpact(inputs: ImpactInputs): (ScoreFormula.Breakdown
 		point = claim.Point
 	end
 
-	local cap = ScoreService.impactSpeedCap(inputs.launch.Speed)
+	local cap = ScoreService.impactSpeedCap(inputs.launch.Momentum)
 	local speed = math.min(serverImpact.Speed, cap)
 	if claim then
 		speed = math.min(claim.Speed, serverImpact.Speed * V.ImpactSpeedTolerance, cap)
@@ -108,6 +107,7 @@ function ScoreService.scoreImpact(inputs: ImpactInputs): (ScoreFormula.Breakdown
 		Zone = ScoreFormula.zoneForRadius(radius),
 		TimeRemaining = timeRemaining,
 		ComboBonus = inputs.comboBonus,
+		Momentum = inputs.launch.Momentum,
 	})
 	return breakdown, nil
 end

@@ -84,42 +84,54 @@ Config.Course = {
 	JumpPadRetrigger = 0.8,
 }
 
+-- Momentum is your average horizontal speed over the whole run (distance ÷ time since GO).
+-- It, not your speed at the lip, sets launch speed, so a late burst only counts for its
+-- share of the run and easing off at the end does not buy an easier, slower flight.
+Config.Momentum = {
+	LaunchScale = 1.8, -- launch speed = momentum × this (clamped to the Slam launch range)
+	MeterMax = 85, -- momentum that fills the HUD meter
+}
+
 Config.Slam = {
 	LaunchPitchDeg = 18,
-	LaunchSpeedMultiplier = 1.45,
 	MinLaunchSpeed = 70,
-	MaxLaunchSpeed = 150,
+	MaxLaunchSpeed = 155,
 	FlightGravity = 20,
-	SteerAcceleration = 26,
+	SteerAcceleration = 28,
 	MaxSteerSpeed = 36, -- cap on lateral speed from steering
 	InvertVertical = false,
-	SlamDashMinBonus = 0.15, -- speed bonus when slam-dashing right before impact
-	SlamDashMaxBonus = 0.35, -- speed bonus when slam-dashing early
+	SlamDashMinBonus = 0.06, -- speed bonus when slam-dashing right before impact
+	SlamDashMaxBonus = 0.15, -- speed bonus when slam-dashing early
 	SlamDashFullBonusTime = 1.0, -- seconds before impact that earn the max bonus
 	SlamDashSteerScale = 0.35,
 	TriggerOffset = 4, -- impact plane sits this far in front of the target face
 	MaxFlightTime = 6,
 	HitStop = 0.12,
 	HitStopExceptional = 0.45,
-	ExceptionalScore = 700, -- scores at or above this get the slow-motion treatment
+	ExceptionalScore = 1600, -- slam scores at or above this get the slow-motion treatment
 }
 
--- Zones are checked in order; radius in studs from the target center.
+-- Zones are checked in order; radius in studs from the target center. Accuracy is a bonus on
+-- top of impact power, kept narrow enough that hitting harder always matters most.
 Config.Target = {
 	Zones = {
-		{ Name = "BULLSEYE", Radius = 4.5, Multiplier = 3 },
-		{ Name = "INNER", Radius = 11, Multiplier = 2 },
-		{ Name = "MIDDLE", Radius = 19, Multiplier = 1.5 },
+		{ Name = "BULLSEYE", Radius = 4.5, Multiplier = 2 },
+		{ Name = "INNER", Radius = 11, Multiplier = 1.6 },
+		{ Name = "MIDDLE", Radius = 19, Multiplier = 1.3 },
 		{ Name = "OUTER", Radius = 30, Multiplier = 1 },
 	},
-	Miss = { Name = "MISS", Multiplier = 0 },
+	Wall = { Name = "WALL", Multiplier = 0.5 }, -- hit the wall outside the rings
 }
 
+-- Impact Power = ImpactSpeed² ÷ PowerDivisor, where ImpactSpeed is the speed driving into the
+-- wall (the normal component). Steering and falling move you along the wall, so they never
+-- add power; only momentum and Slam Dash do.
+-- Final = round(ImpactPower × ZoneMultiplier) + TimeBonus + ComboBonus
 Config.Score = {
-	SpeedScorePerStud = 1, -- impact speed (st/s) → speed score
+	PowerDivisor = 20,
 	TimeBonusPerSecond = 10, -- per second remaining at launch
 	MaxComboBonus = 600,
-	MissKeepsBonuses = true, -- a miss still awards time + combo bonus
+	CoinDivisor = 40, -- coins = slam score (power × zone) ÷ this; only verified impacts pay
 }
 
 Config.Combo = {
@@ -155,13 +167,14 @@ Config.Validation = {
 	MinRunTime = 9,
 	TimeGrace = 0.6,
 	ImpactSpeedTolerance = 1.12, -- claimed impact speed may exceed observed by this factor
+	MomentumTolerance = 1.06, -- client momentum may exceed the server's by this factor
+	MomentumSlack = 3, -- plus this many st/s (sampling and replication delay)
 	ImpactPointTolerance = 3.5,
 	ImpactWait = 1.0, -- seconds to wait for the other half (claim / server detection)
 	ImpactExtrapolate = 30, -- max studs the server will extrapolate to the plane (~2 samples at top speed)
 	RespawnTolerance = 25,
 	NearDistance = 16,
 	NearLookback = 0.8,
-	LaunchApproachWindow = 0.4,
 }
 
 Config.Camera = {

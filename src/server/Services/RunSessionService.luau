@@ -14,6 +14,7 @@ local ScoreFormula = require(Shared.ScoreFormula)
 
 local RunValidator = require(script.Parent.RunValidator)
 local ScoreService = require(script.Parent.ScoreService)
+local WalletService = require(script.Parent.WalletService)
 
 local V = Config.Validation
 
@@ -29,7 +30,7 @@ type Session = {
 	combo: ComboTracker.ComboTracker,
 	checkpoint: number,
 	splits: { number },
-	launch: { Time: number, Speed: number }?,
+	launch: { Time: number, Momentum: number }?,
 	serverImpact: { Point: Vector3, Speed: number, Time: number }?,
 	claim: { Point: Vector3, Speed: number, LaunchTime: number }?,
 	resolveDeadline: number?,
@@ -67,6 +68,7 @@ local function sendState(session: Session)
 		Checkpoint = session.checkpoint,
 		BestScore = if best then best.Score else nil,
 		BestSplits = if best then best.Splits else nil,
+		CoinBalance = WalletService.get(session.player),
 	})
 end
 
@@ -96,8 +98,11 @@ local function finish(session: Session, breakdown: ScoreFormula.Breakdown, reaso
 	session.state = "Finished"
 	session.resolveDeadline = nil
 	local isNewBest = false
-	if not reason then
+	local coins = 0
+	if not reason and breakdown.Outcome == "Impact" then
 		isNewBest = ScoreService.recordRun(session.player, breakdown, session.splits)
+		coins = breakdown.Coins
+		WalletService.award(session.player, coins)
 	end
 	local best = ScoreService.getBest(session.player)
 	remotes.RunResult:FireClient(session.player, {
@@ -106,6 +111,8 @@ local function finish(session: Session, breakdown: ScoreFormula.Breakdown, reaso
 		Reason = reason,
 		IsNewBest = isNewBest,
 		BestScore = if best then best.Score else nil,
+		Coins = coins,
+		CoinBalance = WalletService.get(session.player),
 	})
 	sendState(session)
 end
@@ -172,8 +179,10 @@ local function handleEvent(session: Session, event: RunValidator.Event)
 		if event.Time - session.goTime < V.MinRunTime then
 			session.validator:invalidate("too fast")
 		end
+		-- Momentum = horizontal distance ÷ time since GO, from the server's own samples.
+		local elapsed = math.max(event.Time - session.goTime, 0.1)
 		session.state = "Flight"
-		session.launch = { Time = event.Time, Speed = event.Speed or 0 }
+		session.launch = { Time = event.Time, Momentum = session.validator.runDistance / elapsed }
 		sendState(session)
 	elseif event.Type == "Impact" and session.state == "Flight" then
 		session.serverImpact = { Point = event.Point :: Vector3, Speed = event.Speed or 0, Time = event.Time }
@@ -220,7 +229,7 @@ local function step(session: Session, dt: number)
 	if session.state == "Running" and t > session.goTime + Config.Round.RoundTime + V.TimeGrace then
 		finish(session, ScoreFormula.compute({ Outcome = "TimeUp" }), nil)
 	elseif session.state == "Flight" then
-		local launch = session.launch :: { Time: number, Speed: number }
+		local launch = session.launch :: { Time: number, Momentum: number }
 		if session.resolveDeadline and t >= session.resolveDeadline then
 			resolveImpact(session)
 		elseif t - launch.Time > Config.Slam.MaxFlightTime then
@@ -248,6 +257,12 @@ local function onPlayerAdded(player: Player)
 		sampleClock = 0,
 	}
 	sessions[player] = session
+	task.spawn(function()
+		WalletService.load(player)
+		if sessions[player] == session and session.state ~= "Idle" then
+			sendState(session)
+		end
+	end)
 
 	local function onCharacter(character: Model)
 		character:WaitForChild("HumanoidRootPart")
@@ -341,6 +356,7 @@ function RunSessionService.init(activeCourse: any)
 	Players.PlayerRemoving:Connect(function(player)
 		sessions[player] = nil
 		ScoreService.clear(player)
+		WalletService.clear(player)
 	end)
 
 	RunService.Heartbeat:Connect(function(dt)

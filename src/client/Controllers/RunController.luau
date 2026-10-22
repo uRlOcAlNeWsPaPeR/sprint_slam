@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local ComboTracker = require(Shared.ComboTracker)
+local Momentum = require(Shared.Momentum)
 local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 
@@ -33,6 +34,7 @@ local checkpoint = 1
 local launchTime: number? = nil
 local frozenTimeLeft: number? = nil
 local combo = ComboTracker.new()
+local momentum = Momentum.new()
 local lastRestart = -math.huge
 local impactAt = 0
 local resultDeadline: number? = nil
@@ -57,6 +59,7 @@ local function enterCountdown()
 	InputController.setMovementEnabled(false)
 	CourseController.resetRun()
 	combo = ComboTracker.new()
+	momentum = Momentum.new()
 	checkpoint = 1
 	launchTime = nil
 	frozenTimeLeft = nil
@@ -77,6 +80,7 @@ local function onRunState(payload: any)
 	goTime = payload.GoTime
 	roundTime = payload.RoundTime
 	UIController.setBest(payload.BestScore)
+	UIController.setCoins(payload.CoinBalance)
 	if payload.State == "Countdown" and isNewRun then
 		enterCountdown()
 	end
@@ -102,13 +106,17 @@ local function showResult(payload: any)
 	resultsShownAt = os.clock()
 	local b = payload.Breakdown or {}
 	DevAutopilot.log(string.format(
-		"result: %s reason=%s speed=%s zone=%s time=+%s combo=+%s final=%s best=%s",
-		tostring(b.Outcome), tostring(payload.Reason), tostring(b.ImpactSpeed), tostring(b.Zone),
-		tostring(b.TimeBonus), tostring(b.ComboBonus), tostring(b.Final), tostring(payload.BestScore)
+		"result: %s reason=%s momentum=%s impact=%s power=%s zone=%s time=+%s combo=+%s final=%s coins=+%s best=%s",
+		tostring(b.Outcome), tostring(payload.Reason), tostring(b.Momentum), tostring(b.ImpactSpeed),
+		tostring(b.ImpactPower), tostring(b.Zone), tostring(b.TimeBonus), tostring(b.ComboBonus),
+		tostring(b.Final), tostring(payload.Coins), tostring(payload.BestScore)
 	))
 	UIController.setFlight(false)
 	UIController.showResults(payload)
 	UIController.setBest(payload.BestScore)
+	if payload.CoinBalance then
+		UIController.setCoins(payload.CoinBalance)
+	end
 	Sfx.play("Results")
 end
 
@@ -161,17 +169,22 @@ local function respawn()
 	UIController.toast("RESPAWN", Config.Palette.Orange, 0.7)
 end
 
-local function beginFlight(approachSpeed: number)
+-- Launch speed comes from momentum (the whole run), not the speed at the lip.
+local function beginFlight()
 	if state ~= "Running" then
 		return
 	end
 	launchTime = now()
 	frozenTimeLeft = math.max(goTime + roundTime - launchTime, 0)
 	setState("Flight")
-	DevAutopilot.log(string.format("launch: approach %.1f st/s, %.2fs left", approachSpeed, frozenTimeLeft :: number))
+	local runMomentum = momentum:value()
+	DevAutopilot.log(string.format(
+		"launch: momentum %.1f -> launch %.1f st/s, %.2fs left",
+		runMomentum, Momentum.launchSpeed(runMomentum), frozenTimeLeft :: number
+	))
 	UIController.setSlamMode(true)
 	UIController.setFlight(true)
-	SlamController.begin(approachSpeed)
+	SlamController.begin(runMomentum)
 end
 
 local function onImpact(result: any)
@@ -213,6 +226,7 @@ function RunController.update(dt: number)
 	DevAutopilot.update(state)
 	if state == "Running" and root then
 		MovementController.update(dt)
+		momentum:add(MovementController.getActualSpeed() * dt, dt)
 		CourseController.update(root)
 		local distance = CourseController.getProgress()
 		UIController.setSlamMode(distance >= course.SlamModeDistance)
@@ -242,8 +256,7 @@ function RunController.update(dt: number)
 	-- HUD
 	local speed = 0
 	if state == "Flight" or state == "Impact" then
-		local r = root
-		speed = if r then r.AssemblyLinearVelocity.Magnitude else 0
+		speed = SlamController.getImpactSpeed()
 	else
 		speed = MovementController.getActualSpeed()
 	end
@@ -260,6 +273,7 @@ function RunController.update(dt: number)
 		ComboMultiplier = combo:multiplier(t),
 		ComboWindow = combo:windowRemaining(t),
 		ComboTotal = combo.total,
+		Momentum = momentum:value(),
 		Progress = if inFlight or state == "Impact" or state == "Results" then 1 else distance / length,
 		Prediction = if inFlight then SlamController.getPrediction() else nil,
 	})
