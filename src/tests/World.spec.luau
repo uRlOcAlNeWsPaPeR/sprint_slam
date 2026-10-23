@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Courses = require(Shared.Courses)
+local Weeks = require(Shared.Weeks)
 local Geometry = require(Shared.Geometry)
 local Lobby = require(Shared.Lobby)
 
@@ -36,11 +37,12 @@ return function(t)
 	end)
 
 	t.test("hub and course do not overlap", function()
-		local course = Courses.get()
 		local plazaNearEdge = Lobby.Plaza.Center.Z - Lobby.Plaza.Radius
-		for _, platform in course.Platforms do
-			local farEdge = platform.CFrame.Position.Z + platform.Size.Z / 2
-			t.truthy(farEdge < plazaNearEdge - 100, platform.Name .. " too close to the hub")
+		for _, course in Courses.forWeek(Weeks.current(os.time())) do
+			for _, platform in course.Platforms do
+				local farEdge = platform.CFrame.Position.Z + platform.Size.Z / 2
+				t.truthy(farEdge < plazaNearEdge - 100, course.Id .. " " .. platform.Name .. " too close to the hub")
+			end
 		end
 	end)
 end

@@ -17,7 +17,6 @@ local UIController = {}
 
 UIController.RestartClicked = Signal.new()
 UIController.LobbyClicked = Signal.new()
-UIController.LevelChosen = Signal.new() -- (level: number)
 UIController.NextLevelClicked = Signal.new()
 
 local HEAVY = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Heavy)
@@ -101,11 +100,10 @@ local challengeLabel: TextLabel
 local challengeTimer: TextLabel
 local mode = "Run"
 local runLabel = ""
-local levelSelect: CanvasGroup
-local levelButtons: { TextButton } = {}
-local levelSelectOpen = false
+local slamSegment: Frame
 local levelIntro: Frame
 local nextLevelButton: TextButton
+local courses: { any } = {}
 local progressFill: Frame
 local progressMarker: Frame
 local splitLabel: TextLabel
@@ -184,15 +182,8 @@ local function buildTop(parent: Instance)
 		Children = { corner(4) },
 		Parent = bar,
 	})
-	local pathLength = 0
-	do
-		local points = course.Path
-		for i = 2, #points do
-			pathLength += (points[i] - points[i - 1]).Magnitude
-		end
-	end
-	local slamStart = math.clamp(course.SlamModeDistance / pathLength, 0, 1)
-	new("Frame", {
+	local slamStart = math.clamp(course.SlamModeDistance / course.PathLength, 0, 1)
+	slamSegment = new("Frame", {
 		Name = "SlamSegment",
 		Position = UDim2.fromScale(slamStart, 0),
 		Size = UDim2.fromScale(1 - slamStart, 1),
@@ -679,7 +670,7 @@ local function buildResults(parent: Instance)
 		Name = "Results",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(540, 780),
+		Size = UDim2.fromOffset(540, 840),
 		BackgroundColor3 = Palette.Charcoal,
 		BackgroundTransparency = 0.04,
 		GroupTransparency = 1,
@@ -721,11 +712,12 @@ local function buildResults(parent: Instance)
 	resultRow(body, 4, "Impact Speed")
 	resultRow(body, 5, "Impact Power")
 	resultRow(body, 6, "Accuracy")
-	resultRow(body, 7, "Time Bonus")
-	resultRow(body, 8, "Combo Bonus")
+	resultRow(body, 7, "Run Time")
+	resultRow(body, 8, "Time Bonus")
+	resultRow(body, 9, "Combo Bonus")
 	new("Frame", {
 		Name = "Divider",
-		LayoutOrder = 9,
+		LayoutOrder = 10,
 		Size = UDim2.new(1, 0, 0, 2),
 		BackgroundColor3 = Palette.Cyan,
 		BackgroundTransparency = 0.6,
@@ -734,7 +726,7 @@ local function buildResults(parent: Instance)
 	})
 	label({
 		Name = "FinalCaption",
-		LayoutOrder = 10,
+		LayoutOrder = 11,
 		Size = UDim2.new(1, 0, 0, 24),
 		FontFace = BOLD,
 		TextSize = 18,
@@ -744,7 +736,7 @@ local function buildResults(parent: Instance)
 	})
 	label({
 		Name = "Final",
-		LayoutOrder = 11,
+		LayoutOrder = 12,
 		Size = UDim2.new(1, 0, 0, 72),
 		FontFace = HEAVY,
 		TextSize = 72,
@@ -754,7 +746,7 @@ local function buildResults(parent: Instance)
 	})
 	label({
 		Name = "CoinsEarned",
-		LayoutOrder = 12,
+		LayoutOrder = 13,
 		Size = UDim2.new(1, 0, 0, 28),
 		FontFace = HEAVY,
 		TextSize = 24,
@@ -764,7 +756,7 @@ local function buildResults(parent: Instance)
 	})
 	label({
 		Name = "Unlocked",
-		LayoutOrder = 13,
+		LayoutOrder = 14,
 		Size = UDim2.new(1, 0, 0, 28),
 		FontFace = HEAVY,
 		TextSize = 24,
@@ -774,7 +766,7 @@ local function buildResults(parent: Instance)
 	})
 	label({
 		Name = "Banner",
-		LayoutOrder = 14,
+		LayoutOrder = 15,
 		Size = UDim2.new(1, 0, 0, 30),
 		FontFace = HEAVY,
 		TextSize = 26,
@@ -784,7 +776,7 @@ local function buildResults(parent: Instance)
 	})
 	local button = new("TextButton", {
 		Name = "Again",
-		LayoutOrder = 15,
+		LayoutOrder = 16,
 		Size = UDim2.fromOffset(260, 50),
 		BackgroundColor3 = Palette.Orange,
 		AutoButtonColor = true,
@@ -800,7 +792,7 @@ local function buildResults(parent: Instance)
 	end)
 	nextLevelButton = new("TextButton", {
 		Name = "Next",
-		LayoutOrder = 16,
+		LayoutOrder = 17,
 		Size = UDim2.fromOffset(260, 44),
 		BackgroundColor3 = Palette.Cyan,
 		AutoButtonColor = true,
@@ -817,7 +809,7 @@ local function buildResults(parent: Instance)
 	end)
 	local hubButton = new("TextButton", {
 		Name = "Hub",
-		LayoutOrder = 17,
+		LayoutOrder = 18,
 		Size = UDim2.fromOffset(260, 36),
 		BackgroundColor3 = Palette.Panel,
 		AutoButtonColor = true,
@@ -831,77 +823,6 @@ local function buildResults(parent: Instance)
 	hubButton.Activated:Connect(function()
 		UIController.LobbyClicked:Fire()
 	end)
-end
-
-local function buildLevelSelect(parent: Instance)
-	levelSelect = new("CanvasGroup", {
-		Name = "LevelSelect",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(560, 470),
-		BackgroundColor3 = Palette.Charcoal,
-		BackgroundTransparency = 0.06,
-		GroupTransparency = 1,
-		Visible = false,
-		Children = { corner(16), stroke(Palette.Orange, 2, 0.2) },
-		Parent = parent,
-	})
-	local body = new("Frame", {
-		Name = "Body",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		Children = {
-			new("UIPadding", {
-				PaddingLeft = UDim.new(0, 24),
-				PaddingRight = UDim.new(0, 24),
-				PaddingTop = UDim.new(0, 20),
-				PaddingBottom = UDim.new(0, 18),
-			}),
-			new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8), HorizontalAlignment = Enum.HorizontalAlignment.Center }),
-		},
-		Parent = levelSelect,
-	})
-	label({ Name = "Title", LayoutOrder = 0, Size = UDim2.new(1, 0, 0, 36), FontFace = HEAVY, TextSize = 32, TextColor3 = Palette.Orange, Text = "SPRINT SLAM", Parent = body })
-	for level, def in course.Levels do
-		local button = new("TextButton", {
-			Name = "Level" .. level,
-			LayoutOrder = level,
-			Size = UDim2.new(1, 0, 0, 60),
-			BackgroundColor3 = Palette.Panel,
-			AutoButtonColor = true,
-			Text = "",
-			Children = { corner(10), stroke(Palette.Cyan, 1.5, 0.5) },
-			Parent = body,
-		})
-		label({ Name = "Number", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0, 40, 1, 0), FontFace = HEAVY, TextSize = 30, TextColor3 = Palette.Cyan, Text = tostring(level), Parent = button })
-		label({ Name = "Name", Position = UDim2.fromOffset(60, 8), Size = UDim2.new(0.6, 0, 0, 24), FontFace = HEAVY, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Left, Text = def.Name, Parent = button })
-		label({
-			Name = "New",
-			Position = UDim2.fromOffset(60, 32),
-			Size = UDim2.new(0.6, 0, 0, 18),
-			FontFace = BOLD,
-			TextSize = 15,
-			TextColor3 = Palette.Orange,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Text = if def.New then "NEW: " .. def.New else "THE BASICS",
-			Parent = button,
-		})
-		label({ Name = "Status", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 0), Size = UDim2.new(0.35, 0, 1, 0), FontFace = MONO, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Right, Text = "", Parent = button })
-		button.Activated:Connect(function()
-			UIController.LevelChosen:Fire(level)
-		end)
-		levelButtons[level] = button
-	end
-	label({
-		Name = "Hint",
-		LayoutOrder = 99,
-		Size = UDim2.new(1, 0, 0, 20),
-		FontFace = MEDIUM,
-		TextSize = 15,
-		TextColor3 = Palette.Muted,
-		Text = if UserInputService.TouchEnabled then "Tap a level  |  step out of the portal to close" else "Press 1-5 or click a level  |  step out of the portal to close",
-		Parent = body,
-	})
 end
 
 local function buildLevelIntro(parent: Instance)
@@ -924,8 +845,9 @@ local function updateScale()
 	rootScale.Scale = math.clamp(math.min(viewport.X / 1280, viewport.Y / 760), 0.55, 1.25)
 end
 
-function UIController.init(activeCourse: any)
-	course = activeCourse
+function UIController.init(allCourses: { any })
+	courses = allCourses
+	course = allCourses[1]
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	gui = new("ScreenGui", {
 		Name = "SprintSlamHUD",
@@ -959,11 +881,18 @@ function UIController.init(activeCourse: any)
 	buildCenter(canvas)
 	buildLobbyHeader(canvas)
 	buildLevelIntro(canvas)
-	buildLevelSelect(canvas)
 	buildResults(canvas)
 end
 
 -- Public API ----------------------------------------------------------------------------
+
+-- 24310 -> "24.31s"
+function UIController.formatMs(ms: number?): string
+	if not ms then
+		return "-"
+	end
+	return string.format("%.2fs", ms / 1000)
+end
 
 function UIController.setCoins(balance: number?)
 	if balance then
@@ -971,50 +900,23 @@ function UIController.setCoins(balance: number?)
 	end
 end
 
--- Level select (shown while standing in the Sprint Slam portal).
-function UIController.showLevelSelect(unlocked: number, bests: { [string]: number }?)
-	for level, button in levelButtons do
-		local locked = level > unlocked
-		local best = bests and bests[tostring(level)]
-		local status = button:FindFirstChild("Status") :: TextLabel
-		status.Text = if locked then "LOCKED" elseif best then "BEST " .. tostring(best) else "PLAY"
-		status.TextColor3 = if locked then Palette.Muted elseif best then Palette.White else Palette.Cyan
-		button.AutoButtonColor = not locked
-		button.BackgroundTransparency = if locked then 0.55 else 0
-		for _, child in button:GetChildren() do
-			if child:IsA("TextLabel") and child.Name ~= "Status" then
-				child.TextTransparency = if locked then 0.55 else 0
-			end
-		end
-	end
-	if not levelSelectOpen then
-		levelSelectOpen = true
-		levelSelect.Visible = true
-		tween(levelSelect, 0.2, { GroupTransparency = 0 })
-	end
+-- Switches the HUD to another challenge's course (progress bar, label).
+function UIController.setCourse(newCourse: any)
+	course = newCourse
+	local slamStart = math.clamp(newCourse.SlamModeDistance / newCourse.PathLength, 0, 1)
+	slamSegment.Position = UDim2.fromScale(slamStart, 0)
+	slamSegment.Size = UDim2.fromScale(1 - slamStart, 1)
 end
 
-function UIController.hideLevelSelect()
-	if levelSelectOpen then
-		levelSelectOpen = false
-		levelSelect.GroupTransparency = 1
-		levelSelect.Visible = false
-	end
-end
-
-function UIController.isLevelSelectOpen(): boolean
-	return levelSelectOpen
-end
-
-function UIController.setRunLabel(level: number, def: any)
-	runLabel = string.format("LV %d  %s", level, def.Name)
+function UIController.setRunLabel(index: number, def: any)
+	runLabel = string.format("CH %d  %s", index, def.DisplayName)
 	if mode == "Run" then
 		courseLabel.Text = runLabel
 	end
 end
 
-function UIController.showLevelIntro(level: number, def: any)
-	(levelIntro:FindFirstChild("Title") :: TextLabel).Text = string.format("LEVEL %d  -  %s", level, def.Name);
+function UIController.showLevelIntro(index: number, def: any)
+	(levelIntro:FindFirstChild("Title") :: TextLabel).Text = string.format("CHALLENGE %d  -  %s", index, def.DisplayName);
 	(levelIntro:FindFirstChild("New") :: TextLabel).Text = if def.New then "NEW: " .. def.New else "";
 	(levelIntro:FindFirstChild("Body") :: TextLabel).Text = def.Intro or ""
 	levelIntro.Visible = true
@@ -1171,9 +1073,6 @@ function UIController.setMode(newMode: string)
 	momentumRow.Visible = not inLobby
 	lobbyHeader.Visible = inLobby
 	courseLabel.Text = if inLobby then "THE HUB" elseif runLabel ~= "" then runLabel else course.DisplayName
-	if not inLobby then
-		UIController.hideLevelSelect()
-	end
 	if inLobby then
 		countdownGoTime = nil
 		fadeText(countdownLabel, false)
@@ -1243,7 +1142,7 @@ function UIController.update(info: HudInfo)
 	end
 end
 
-local RESULT_ROWS = { "Momentum", "Impact Speed", "Impact Power", "Accuracy", "Time Bonus", "Combo Bonus" }
+local RESULT_ROWS = { "Momentum", "Impact Speed", "Impact Power", "Accuracy", "Run Time", "Time Bonus", "Combo Bonus" }
 
 local function setRow(name: string, value: string, color: Color3?)
 	local body = results:FindFirstChild("Body") :: Frame
@@ -1310,12 +1209,12 @@ function UIController.showResults(payload: any)
 	local coinsEarned = body:FindFirstChild("CoinsEarned") :: TextLabel
 	local unlockedLabel = body:FindFirstChild("Unlocked") :: TextLabel
 	unlockedLabel.Text = ""
-	local level = payload.Level or 1
-	local canAdvance = level < #course.Levels and (payload.UnlockedLevel or 1) > level
-	nextLevelButton.Visible = canAdvance
+	local challenge = payload.Challenge or 1
+	local canAdvance = challenge < #courses and (payload.AllCleared or (payload.Unlocked or 1) > challenge)
+	nextLevelButton.Visible = canAdvance == true and not payload.Reason
 	if canAdvance then
-		local nextDef = course.Levels[level + 1]
-		nextLevelButton.Text = string.format("NEXT: %s%s", nextDef.Name, if UserInputService.TouchEnabled then "" else "  [N]")
+		local nextDef = courses[challenge + 1]
+		nextLevelButton.Text = string.format("NEXT: %s%s", nextDef.DisplayName, if UserInputService.TouchEnabled then "" else "  [N]")
 	end
 
 	results.Visible = true
@@ -1359,6 +1258,7 @@ function UIController.showResults(payload: any)
 			{ "Impact Speed", string.format("%d st/s", breakdown.ImpactSpeed) },
 			{ "Impact Power", tostring(breakdown.ImpactPower), Palette.Cyan },
 			{ "Accuracy", zoneLabel, zoneColor },
+			{ "Run Time", UIController.formatMs(payload.TimeMs) },
 			{ "Time Bonus", "+" .. tostring(breakdown.TimeBonus) },
 			{ "Combo Bonus", "+" .. tostring(breakdown.ComboBonus) },
 		}, token)
@@ -1375,18 +1275,21 @@ function UIController.showResults(payload: any)
 		if (payload.Coins or 0) > 0 then
 			coinsEarned.Text = string.format("+%d COINS", payload.Coins)
 		end
-		if payload.NewlyUnlocked then
-			local def = course.Levels[payload.NewlyUnlocked]
-			unlockedLabel.Text = string.format("LEVEL %d UNLOCKED: %s", payload.NewlyUnlocked, def.Name)
+		if payload.NewlyCleared then
+			if payload.AllCleared then
+				unlockedLabel.Text = "ALL 10 CLEARED - PICK ANY TO IMPROVE!"
+			else
+				unlockedLabel.Text = string.format("CHALLENGE %d CLEARED - %s UNLOCKED", payload.NewlyCleared, courses[payload.NewlyCleared + 1].DisplayName)
+			end
 		end
-		if payload.IsNewBest then
-			banner.Text = "NEW PERSONAL BEST!"
+		if payload.IsNewBest or payload.IsNewTime then
+			banner.Text = if payload.IsNewBest and payload.IsNewTime then "NEW BEST SCORE + TIME!" elseif payload.IsNewBest then "NEW BEST SCORE!" else "NEW BEST TIME!"
 			banner.TextColor3 = Palette.Orange
 			local bannerScale = banner:FindFirstChildOfClass("UIScale") or new("UIScale", { Parent = banner })
 			bannerScale.Scale = 0.4
 			tween(bannerScale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
 		elseif payload.BestScore then
-			banner.Text = "BEST  " .. tostring(payload.BestScore)
+			banner.Text = string.format("BEST  %d   |   %s", payload.BestScore, UIController.formatMs(payload.BestTimeMs))
 			banner.TextColor3 = Palette.Muted
 		end
 	end)

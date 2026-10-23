@@ -1,7 +1,8 @@
 --!strict
--- One session per player. Players spawn in the hub (Lobby); walking into the Sprint Slam
--- portal starts Countdown → Running → Flight → Finished, restartable at any time, and they
--- can return to the hub whenever they like. The server owns every transition that affects score.
+-- One session per player. Players spawn in the hub (Lobby); at the Sprint Slam portal they
+-- pick one of the week's ten challenges (first clears must go in order; after that any).
+-- A run goes Countdown → Running → Flight → Finished, restartable at any time, and they can
+-- return to the hub whenever they like. The server owns every transition that affects score.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,7 +13,9 @@ local Config = require(Shared.Config)
 local ComboTracker = require(Shared.ComboTracker)
 local Net = require(Shared.Net)
 local ScoreFormula = require(Shared.ScoreFormula)
+local Weeks = require(Shared.Weeks)
 
+local BoardService = require(script.Parent.BoardService)
 local ProgressService = require(script.Parent.ProgressService)
 local RunValidator = require(script.Parent.RunValidator)
 local ScoreService = require(script.Parent.ScoreService)
@@ -26,7 +29,7 @@ type Session = {
 	player: Player,
 	course: any,
 	runId: number,
-	level: number,
+	challenge: number, -- 1-10, the challenge of the current/last run
 	state: string, -- "Idle" | "Lobby" | "Countdown" | "Running" | "Flight" | "Finished"
 	goTime: number,
 	validator: RunValidator.RunValidator,
@@ -42,7 +45,8 @@ type Session = {
 }
 
 local sessions: { [Player]: Session } = {}
-local course: any
+local week: any
+local courses: { any } = {}
 local lobby: any
 local remotes: { [string]: RemoteEvent } = {}
 
@@ -63,18 +67,26 @@ local function rootOf(player: Player): BasePart?
 end
 
 local function sendState(session: Session)
-	local best = ScoreService.getBest(session.player, session.level)
+	local mine = BoardService.personal(session.player)
+	local bests = {}
+	for index, entry in mine do
+		bests[tostring(index)] = { Score = entry.Score, TimeMs = entry.TimeMs }
+	end
+	local splitsBest = ScoreService.getBest(session.player, session.challenge)
 	remotes.RunState:FireClient(session.player, {
 		RunId = session.runId,
 		State = session.state,
-		Level = session.level,
-		UnlockedLevel = ProgressService.get(session.player),
-		LevelBests = ScoreService.levelBests(session.player, #course.Levels),
+		WeekId = week.Id,
+		Challenge = session.challenge,
+		Cleared = ProgressService.clearedCount(session.player),
+		Unlocked = ProgressService.unlockedCount(session.player),
+		AllCleared = ProgressService.allCleared(session.player),
+		Bests = bests,
 		GoTime = session.goTime,
-		RoundTime = Config.Round.RoundTime,
+		RoundTime = session.course.RoundTime,
 		Checkpoint = session.checkpoint,
-		BestScore = if best then best.Score else nil,
-		BestSplits = if best then best.Splits else nil,
+		BestScore = mine[session.challenge] and mine[session.challenge].Score or nil,
+		BestSplits = if splitsBest then splitsBest.Splits else nil,
 		CoinBalance = WalletService.get(session.player),
 	})
 end
@@ -84,8 +96,9 @@ local function startCountdown(session: Session, seconds: number, serverTeleport:
 	session.runId += 1
 	session.state = "Countdown"
 	session.goTime = t + seconds
+	session.course = courses[session.challenge]
+	session.validator:setCourse(session.course)
 	session.validator:reset()
-	session.validator:setLevel(session.level)
 	session.combo = ComboTracker.new(Config.Combo.ServerWindowSlack)
 	session.checkpoint = 1
 	session.splits = {}
@@ -94,7 +107,7 @@ local function startCountdown(session: Session, seconds: number, serverTeleport:
 	session.claim = nil
 	session.resolveDeadline = nil
 
-	local spawn: CFrame = course.Spawn
+	local spawn: CFrame = session.course.Spawn
 	if serverTeleport and session.player.Character then
 		session.player.Character:PivotTo(spawn)
 	end
@@ -135,30 +148,39 @@ end
 local function finish(session: Session, breakdown: ScoreFormula.Breakdown, reason: string?)
 	session.state = "Finished"
 	session.resolveDeadline = nil
-	local isNewBest = false
+	local isNewBest, isNewTime = false, false
 	local coins = 0
-	local unlockedNow = nil
+	local newlyCleared = nil
+	local timeMs = nil
 	if not reason and breakdown.Outcome == "Impact" then
-		isNewBest = ScoreService.recordRun(session.player, session.level, breakdown, session.splits)
+		local launch = session.launch :: { Time: number, Momentum: number }
+		timeMs = math.floor((launch.Time - session.goTime) * 1000 + 0.5)
+		ScoreService.recordRun(session.player, session.challenge, breakdown, session.splits)
+		isNewBest, isNewTime = BoardService.submit(session.player, week.Id, session.challenge, breakdown.Final, timeMs)
 		coins = breakdown.Coins
 		WalletService.award(session.player, coins)
-		-- Any verified slam clears the level and unlocks the next one.
-		if session.level < #course.Levels and ProgressService.unlock(session.player, session.level + 1) then
-			unlockedNow = session.level + 1
+		-- The first verified slam on the next challenge in order clears it.
+		if ProgressService.recordClear(session.player, session.challenge) then
+			newlyCleared = session.challenge
 		end
 	end
-	local best = ScoreService.getBest(session.player, session.level)
+	local mine = BoardService.personal(session.player)[session.challenge]
 	remotes.RunResult:FireClient(session.player, {
 		RunId = session.runId,
 		Breakdown = breakdown,
 		Reason = reason,
 		IsNewBest = isNewBest,
-		BestScore = if best then best.Score else nil,
+		IsNewTime = isNewTime,
+		TimeMs = timeMs,
+		BestScore = mine and mine.Score or nil,
+		BestTimeMs = mine and mine.TimeMs or nil,
 		Coins = coins,
 		CoinBalance = WalletService.get(session.player),
-		Level = session.level,
-		UnlockedLevel = ProgressService.get(session.player),
-		NewlyUnlocked = unlockedNow,
+		Challenge = session.challenge,
+		Cleared = ProgressService.clearedCount(session.player),
+		Unlocked = ProgressService.unlockedCount(session.player),
+		AllCleared = ProgressService.allCleared(session.player),
+		NewlyCleared = newlyCleared,
 	})
 	sendState(session)
 end
@@ -186,7 +208,8 @@ local function resolveImpact(session: Session)
 		end
 	end
 	local breakdown, reason = ScoreService.scoreImpact({
-		course = course,
+		course = session.course,
+		roundTime = session.course.RoundTime,
 		goTime = session.goTime,
 		launch = launch,
 		serverImpact = session.serverImpact,
@@ -208,7 +231,7 @@ local function handleEvent(session: Session, event: RunValidator.Event)
 		session.checkpoint = index
 		local split = event.Time - session.goTime
 		session.splits[index] = split
-		local best = ScoreService.getBest(session.player, session.level)
+		local best = ScoreService.getBest(session.player, session.challenge)
 		local bestSplit = best and best.Splits[index]
 		remotes.Checkpoint:FireClient(session.player, {
 			RunId = session.runId,
@@ -259,7 +282,7 @@ local function step(session: Session, dt: number)
 	if root and session.sampleClock >= V.SampleInterval then
 		session.sampleClock = 0
 		if session.state == "Countdown" and not session.validator:isTeleportPending() then
-			local offset = root.Position - course.Spawn.Position
+			local offset = root.Position - session.course.Spawn.Position
 			if Vector3.new(offset.X, 0, offset.Z).Magnitude > V.FalseStartDistance then
 				session.validator:invalidate("false start")
 			end
@@ -272,7 +295,7 @@ local function step(session: Session, dt: number)
 		end
 	end
 
-	if session.state == "Running" and t > session.goTime + Config.Round.RoundTime + V.TimeGrace then
+	if session.state == "Running" and t > session.goTime + session.course.RoundTime + V.TimeGrace then
 		finish(session, ScoreFormula.compute({ Outcome = "TimeUp" }), nil)
 	elseif session.state == "Flight" then
 		local launch = session.launch :: { Time: number, Momentum: number }
@@ -287,12 +310,12 @@ end
 local function onPlayerAdded(player: Player)
 	local session: Session = {
 		player = player,
-		course = course,
+		course = courses[1],
 		runId = 0,
-		level = 1,
+		challenge = 1,
 		state = "Idle",
 		goTime = 0,
-		validator = RunValidator.new(course),
+		validator = RunValidator.new(courses[1]),
 		combo = ComboTracker.new(Config.Combo.ServerWindowSlack),
 		checkpoint = 1,
 		splits = {},
@@ -307,6 +330,7 @@ local function onPlayerAdded(player: Player)
 	task.spawn(function()
 		WalletService.load(player)
 		ProgressService.load(player)
+		BoardService.loadPlayer(player, week.Id, #courses)
 		if sessions[player] == session and session.state ~= "Idle" then
 			sendState(session)
 		end
@@ -347,7 +371,7 @@ local function connectRemotes()
 		startCountdown(session, Config.Round.RestartCountdownSeconds, false)
 	end)
 
-	remotes.RequestMode.OnServerEvent:Connect(function(player: Player, mode: any, level: any)
+	remotes.RequestMode.OnServerEvent:Connect(function(player: Player, mode: any, challenge: any)
 		local session = sessions[player]
 		if not session or typeof(mode) ~= "string" or not rootOf(player) then
 			return
@@ -357,17 +381,52 @@ local function connectRemotes()
 				enterLobby(session)
 			end
 		elseif mode == "SprintSlam" then
-			-- Only unlocked levels; from the hub you must be standing at the portal, while
-			-- already in Sprint Slam (e.g. "next level" on the results screen) you may switch.
-			if typeof(level) ~= "number" or level % 1 ~= 0 or level < 1 or level > ProgressService.get(player) or level > #course.Levels then
+			-- Only challenges the player has unlocked (the next one in order, or any once
+			-- all ten are cleared). From the hub they must be standing at the portal; once
+			-- in Sprint Slam (e.g. NEXT on the results screen) they may switch directly.
+			if typeof(challenge) ~= "number" or challenge % 1 ~= 0 or challenge < 1 or challenge > #courses then
+				return
+			end
+			if not ProgressService.isUnlocked(player, challenge) then
 				return
 			end
 			local inMode = session.state ~= "Lobby" and session.state ~= "Idle"
 			if inMode or (session.state == "Lobby" and nearPortal(player, mode)) then
-				session.level = level
+				session.challenge = challenge
 				startCountdown(session, Config.Round.CountdownSeconds, true)
 			end
 		end
+	end)
+
+	local lastBoardRequest: { [Player]: number } = {}
+	remotes.RequestBoard.OnServerEvent:Connect(function(player: Player, challenge: any)
+		if typeof(challenge) ~= "number" or challenge % 1 ~= 0 or challenge < 1 or challenge > #courses then
+			return
+		end
+		local t = os.clock()
+		if t - (lastBoardRequest[player] or -math.huge) < 0.5 then
+			return
+		end
+		lastBoardRequest[player] = t
+		task.spawn(function()
+			remotes.BoardData:FireClient(player, {
+				WeekId = week.Id,
+				Challenge = challenge,
+				Score = BoardService.top(week.Id, challenge, "Score", 10),
+				Time = BoardService.top(week.Id, challenge, "Time", 10),
+			})
+		end)
+	end)
+
+	remotes.RequestHallOfFame.OnServerEvent:Connect(function(player: Player)
+		local t = os.clock()
+		if t - (lastBoardRequest[player] or -math.huge) < 0.5 then
+			return
+		end
+		lastBoardRequest[player] = t
+		task.spawn(function()
+			remotes.HallOfFameData:FireClient(player, BoardService.hallOfFame(Weeks.finishedBefore(os.time()), 5))
+		end)
 	end)
 
 	remotes.RequestRespawn.OnServerEvent:Connect(function(player: Player, runId: any)
@@ -377,7 +436,7 @@ local function connectRemotes()
 		end
 		local positions = {}
 		for index = 1, session.checkpoint do
-			table.insert(positions, course.Checkpoints[index].Respawn.Position)
+			table.insert(positions, session.course.Checkpoints[index].Respawn.Position)
 		end
 		session.validator:expectTeleport(positions, now())
 	end)
@@ -413,8 +472,17 @@ local function connectRemotes()
 	end)
 end
 
-function RunSessionService.init(activeCourse: any, activeLobby: any)
-	course = activeCourse
+-- Re-sends a player's state (used by Studio test tooling after changing their progress).
+function RunSessionService.refresh(player: Player)
+	local session = sessions[player]
+	if session then
+		sendState(session)
+	end
+end
+
+function RunSessionService.init(activeWeek: any, activeCourses: { any }, activeLobby: any)
+	week = activeWeek
+	courses = activeCourses
 	lobby = activeLobby
 	for _, name in Net.Names do
 		remotes[name] = Net.get(name)
@@ -430,11 +498,24 @@ function RunSessionService.init(activeCourse: any, activeLobby: any)
 		ScoreService.clear(player)
 		WalletService.clear(player)
 		ProgressService.clear(player)
+		BoardService.clear(player)
 	end)
 
 	RunService.Heartbeat:Connect(function(dt)
 		for _, session in sessions do
 			step(session, dt)
+		end
+		-- Studio QA only: workspace attribute DevClearTo = N marks challenges 1..N cleared for
+		-- everyone in the session (so a test can jump straight to challenge N+1).
+		local clearTo = workspace:GetAttribute("DevClearTo")
+		if clearTo ~= nil and RunService:IsStudio() then
+			workspace:SetAttribute("DevClearTo", nil)
+			for _, session in sessions do
+				for index = 1, math.min(tonumber(clearTo) or 0, #courses) do
+					ProgressService.recordClear(session.player, index)
+				end
+				sendState(session)
+			end
 		end
 	end)
 end

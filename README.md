@@ -9,13 +9,27 @@ The full concept analysis, technical challenges, architecture and phased roadmap
 
 ## Status
 
-**Levels 1-5.** Sprint Slam has five levels on the Neon Rush layout. Each one adds a new
-obstacle on top of the last: **Danger Zone** (death blocks: touch one and you respawn at the
-last checkpoint), **Laser Grid** (laser gates that blink on and off), **Spin Cycle** (floor
-spinners that knock you away) and **Blink Out** (the S-bend floor turns on and off in a wave
-you have to ride at about 50 st/s). The portal opens a level select. Any verified slam
-unlocks the next level, and NEXT LEVEL (or **N**) jumps straight there. Unlocks are saved in
-published places.
+**Weekly challenges.** Every Sunday (00:00 UTC) a new week of **10 challenges** goes live. At the
+Sprint Slam portal you pick one; the first time through you must clear them **in order** (a
+clear is any server-verified slam), and once all ten are cleared you can replay **any** of
+them to improve. Each challenge has two leaderboards:
+
+- **Best score**: impact power x ring multiplier + time bonus (10 points for every second left
+  on the clock, so a faster run is worth more) + combo bonus.
+- **Fastest time**: GO to launch.
+
+When a week ends, the top player on every board is inducted into the **Hall of Fame** (the
+wall in the hub, and a tab in the portal menu), along with the week's champion (most board
+wins). Week 1 is **Neon Rush, Danger Zone, Laser Grid, Spin Cycle, Blink Out, Pillar Punch,
+Sweep Shot, Death Slalom, Gauntlet and Grand Slam**, each a bit longer than the old single
+course, with a new hazard introduced one at a time over the first five. To add a week, copy
+`src/shared/Weeks/Week1.luau`, give it the next Sunday as `StartsAt`, and list it in
+`Weeks/init.luau`.
+
+**Hazards.** Death blocks (touch one and you respawn at the last checkpoint), laser gates that
+blink on and off, floor spinners that knock you away, blink floors that flash in a wave you ride
+at about 50 st/s, pillar fields and sweeping blocks. Challenge progress and best times are saved
+in published places.
 
 **The Hub (lobby).** Every player spawns in a floating neon hub. Walk into the **Sprint Slam**
 portal to start a run, and press **L** (or the HUB button) to come back. Two locked portals
@@ -66,8 +80,8 @@ It switches HTTP on only for the fetch. With [Rojo](https://rojo.space) installe
 | Slide | Ctrl or C | B | SLIDE |
 | Restart run / restart challenge | R | Y | RESTART |
 | Back to the hub | L | Select | HUB |
-| Pick a level (in the portal) | 1-5 | - | tap a level |
-| Next level (results) | N | - | NEXT |
+| Pick a challenge (in the portal) | 1-9, 0 for #10 | - | tap a challenge |
+| Next challenge (results) | N | - | NEXT |
 
 ## Tuning
 
@@ -83,13 +97,14 @@ launch, impact and the server's verdict:
 ```lua
 game.Players.LocalPlayer:SetAttribute("Autopilot", true)
 game.Players.LocalPlayer:SetAttribute("AutopilotLoop", true) -- optional: restart after each result
-game.Players.LocalPlayer:SetAttribute("AutopilotAdvance", true) -- with Loop: go on through levels 1-5
+game.Players.LocalPlayer:SetAttribute("AutopilotAdvance", true) -- with Loop: go on through challenges 1-10
 game.Players.LocalPlayer:SetAttribute("AutopilotChallenge", "SKY TOWER") -- or run a hub challenge
 ```
 
 The bot completed every hub challenge (Dash Gaps 2.3 s, Beam Run 4.5 s, Sky Tower 6.9 s)
-and chained levels 1-5 with verified bullseyes. Keep the Studio window visible while it
-runs: Studio pauses rendering for hidden windows.
+and all ten Week 1 challenges in a row with verified bullseyes. To skip ahead in Studio, set
+`workspace:SetAttribute("DevClearTo", 5)` from the server DataModel (Studio only), then pick
+challenge 6 (`AutopilotLevel`)."
 
 ## Tests
 

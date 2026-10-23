@@ -11,9 +11,13 @@ Net.Names = {
 	RunState = "RunState",
 	Checkpoint = "Checkpoint",
 	RunResult = "RunResult",
+	BoardData = "BoardData", -- top boards for one challenge
+	HallOfFameData = "HallOfFameData",
 	-- client → server
 	RequestRestart = "RequestRestart",
-	RequestMode = "RequestMode", -- "SprintSlam" (from a portal) or "Lobby"
+	RequestMode = "RequestMode", -- ("SprintSlam", challenge) from a portal, or "Lobby"
+	RequestBoard = "RequestBoard",
+	RequestHallOfFame = "RequestHallOfFame",
 	RequestRespawn = "RequestRespawn",
 	ComboEvent = "ComboEvent",
 	ImpactClaim = "ImpactClaim",

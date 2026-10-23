@@ -27,6 +27,7 @@ local lastEnterRequest = -math.huge
 local inPortal = false
 local current: { index: number, phase: string, startedAt: number, finishedTime: number? }? = nil
 local bests: { [string]: number } = {}
+local hallBody: TextLabel? = nil
 local halo: Model? = nil
 local haloPivot: CFrame? = nil
 local portalCores: { { part: BasePart } } = {}
@@ -44,11 +45,23 @@ function LobbyController.init(activeLobby: any)
 	local decor = root:WaitForChild("Decor")
 	halo = decor:WaitForChild("Halo") :: Model
 	haloPivot = (halo :: Model):GetPivot()
+	local board = decor:FindFirstChild("HallOfFameBoard")
+	local body = board and board:FindFirstChild("Gui") and board.Gui:FindFirstChild("Body")
+	if body and body:IsA("TextLabel") then
+		hallBody = body
+	end
 	for _, portal in root:WaitForChild("Portals"):GetChildren() do
 		local core = portal:FindFirstChild("Core")
 		if core and core:IsA("BasePart") and portal:GetAttribute("Mode") ~= "" then
 			table.insert(portalCores, { part = core })
 		end
+	end
+end
+
+-- Fills the in-world Hall of Fame wall. `format` turns the server's list into rich text.
+function LobbyController.setHallOfFame(list: { any }, _courses: { any }, format: ({ any }) -> string)
+	if hallBody then
+		hallBody.Text = format(list)
 	end
 end
 

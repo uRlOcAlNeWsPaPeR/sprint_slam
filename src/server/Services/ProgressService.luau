@@ -1,21 +1,27 @@
 --!strict
--- Level unlocks. Clearing level N with a verified slam unlocks N + 1. Persists in a
--- DataStore; where DataStores are unavailable (unpublished place), it lasts for the session.
+-- Weekly challenge progression. Each week a player must clear its challenges once, in order
+-- (a clear is any server-verified slam). Once all ten are cleared they may replay any of them
+-- to improve their score and time. Persists per player per week in a DataStore; where
+-- DataStores are unavailable (an unpublished place), it lasts for the session.
 
 local DataStoreService = game:GetService("DataStoreService")
 
 local ProgressService = {}
 
-local STORE_NAME = "SprintSlamProgress_v1"
+local STORE_NAME = "SprintSlamProgress_v2"
 
-local unlocked: { [Player]: number } = {}
+local cleared: { [Player]: number } = {} -- challenges cleared in order this week
 local store: DataStore? = nil
+local weekId = ""
+local challengeCount = 10
 
 local function key(player: Player): string
-	return "u_" .. player.UserId
+	return `u_{player.UserId}_{weekId}`
 end
 
-function ProgressService.init()
+function ProgressService.init(currentWeekId: string, count: number)
+	weekId = currentWeekId
+	challengeCount = count
 	local ok, result = pcall(function()
 		return DataStoreService:GetDataStore(STORE_NAME)
 	end)
@@ -24,7 +30,7 @@ end
 
 -- Yields while the saved progress loads.
 function ProgressService.load(player: Player)
-	unlocked[player] = unlocked[player] or 1
+	cleared[player] = cleared[player] or 0
 	local dataStore = store
 	if not dataStore then
 		return
@@ -33,28 +39,43 @@ function ProgressService.load(player: Player)
 		return dataStore:GetAsync(key(player))
 	end)
 	if ok then
-		unlocked[player] = math.max(unlocked[player] or 1, tonumber(result) or 1)
+		cleared[player] = math.max(cleared[player] or 0, math.clamp(tonumber(result) or 0, 0, challengeCount))
 	else
-		store = nil -- the wallet already warned; stay session-only quietly
+		store = nil -- stay session-only; the wallet service already warned
 	end
 end
 
-function ProgressService.get(player: Player): number
-	return unlocked[player] or 1
+function ProgressService.clearedCount(player: Player): number
+	return cleared[player] or 0
 end
 
--- Returns true if this actually raised the player's unlocked level.
-function ProgressService.unlock(player: Player, level: number): boolean
-	if level <= ProgressService.get(player) then
+function ProgressService.allCleared(player: Player): boolean
+	return ProgressService.clearedCount(player) >= challengeCount
+end
+
+-- The highest challenge the player may start: the next uncleared one, or any once all are
+-- cleared.
+function ProgressService.unlockedCount(player: Player): number
+	return math.min(ProgressService.clearedCount(player) + 1, challengeCount)
+end
+
+function ProgressService.isUnlocked(player: Player, index: number): boolean
+	return ProgressService.allCleared(player) or index <= ProgressService.unlockedCount(player)
+end
+
+-- Records a verified slam on challenge `index`. Returns true if it advanced the player's
+-- in-order progress (their first clear of that challenge).
+function ProgressService.recordClear(player: Player, index: number): boolean
+	if index ~= ProgressService.clearedCount(player) + 1 then
 		return false
 	end
-	unlocked[player] = level
+	cleared[player] = index
 	local dataStore = store
 	if dataStore then
 		task.spawn(function()
 			pcall(function()
 				dataStore:UpdateAsync(key(player), function(saved)
-					return math.max(tonumber(saved) or 1, level)
+					return math.max(tonumber(saved) or 0, index)
 				end)
 			end)
 		end)
@@ -63,7 +84,7 @@ function ProgressService.unlock(player: Player, level: number): boolean
 end
 
 function ProgressService.clear(player: Player)
-	unlocked[player] = nil
+	cleared[player] = nil
 end
 
 return ProgressService

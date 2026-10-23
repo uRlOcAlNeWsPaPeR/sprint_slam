@@ -111,10 +111,15 @@ function SlamController.hideReticle()
 	placeReticle(CFrame.new(0, -1000, 0))
 end
 
-function SlamController.init(activeCourse: any)
-	course = activeCourse
+function SlamController.init()
 	buildReticle()
-	local target = workspace:WaitForChild("Course"):WaitForChild("Target")
+end
+
+-- Points the slam at one challenge's course and gathers its target rings for the hit pulse.
+function SlamController.setCourse(newCourse: any)
+	course = newCourse
+	table.clear(zoneParts)
+	local target = workspace:WaitForChild("Courses"):WaitForChild(newCourse.Id):WaitForChild("Target")
 	for _, child in target:GetChildren() do
 		if child:IsA("BasePart") and string.sub(child.Name, 1, 5) == "Zone_" then
 			table.insert(zoneParts, { part = child, base = child.CFrame })

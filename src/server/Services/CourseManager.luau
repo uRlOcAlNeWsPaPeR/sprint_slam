@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Courses = require(Shared.Courses)
+local Weeks = require(Shared.Weeks)
 local HazardMath = require(Shared.HazardMath)
 
 local BuildKit = require(script.Parent.BuildKit)
@@ -16,11 +17,12 @@ local decor, neon, part, folder = BuildKit.decor, BuildKit.neon, BuildKit.part, 
 
 local CourseManager = {}
 
-CourseManager.Active = nil :: any
+CourseManager.Week = nil :: any
+CourseManager.Courses = {} :: { any }
 
 local function buildCourseMarkings(course: any, parent: Instance)
 	-- Start line.
-	neon(parent, CFrame.new(0, 0.06, -20), Vector3.new(44, 0.12, 1.2), Palette.White)
+	neon(parent, course.StartLine, Vector3.new(44, 0.12, 1.2), Palette.White)
 
 	-- Checkpoint shimmer planes.
 	local gates = folder("Gates", parent)
@@ -154,18 +156,9 @@ local function buildTarget(course: any, parent: Instance)
 	model.Parent = parent
 end
 
--- options.Preview: edit-time preview (Studio plugin). The folder is not saved with the
--- place and the live course is not published, since the server rebuilds it on Play.
-function CourseManager.build(courseId: string?, options: { Preview: boolean? }?)
-	local preview = options ~= nil and options.Preview == true
-	local course = Courses.get(courseId)
-	local existing = workspace:FindFirstChild("Course")
-	if existing then
-		existing:Destroy()
-	end
-
+local function buildCourse(course: any, parent: Instance)
 	local root = Instance.new("Folder")
-	root.Name = "Course"
+	root.Name = course.Id
 	local geometry = folder("Geometry", root)
 	BuildKit.platforms(course.Platforms, geometry)
 	BuildKit.walls(course.Walls, geometry)
@@ -180,16 +173,37 @@ function CourseManager.build(courseId: string?, options: { Preview: boolean? }?)
 	buildHazards(course, root)
 	buildTarget(course, root)
 	root:SetAttribute("CourseId", course.Id)
-	if preview then
-		root.Archivable = false
-		root.Parent = workspace
-		return course
-	end
-	root.Parent = workspace
+	root.Parent = parent
+end
 
-	ReplicatedStorage:SetAttribute("ActiveCourse", course.Id)
-	CourseManager.Active = course
-	return course
+-- Builds every challenge of the current week into workspace.Courses (one folder each).
+-- options.Preview: edit-time preview (Studio plugin); never saved, nothing published.
+function CourseManager.build(options: { Preview: boolean? }?)
+	local preview = options ~= nil and options.Preview == true
+	local week = Weeks.current(os.time())
+	local courses = Courses.forWeek(week)
+
+	local existing = workspace:FindFirstChild("Courses")
+	if existing then
+		existing:Destroy()
+	end
+	local container = Instance.new("Folder")
+	container.Name = "Courses"
+	for _, course in courses do
+		buildCourse(course, container)
+	end
+	if preview then
+		container.Archivable = false
+	end
+	container.Parent = workspace
+	if preview then
+		return week, courses
+	end
+
+	ReplicatedStorage:SetAttribute("ActiveWeek", week.Id)
+	CourseManager.Week = week
+	CourseManager.Courses = courses
+	return week, courses
 end
 
 return CourseManager

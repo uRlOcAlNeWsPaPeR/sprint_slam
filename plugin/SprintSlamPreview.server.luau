@@ -69,7 +69,7 @@ local function rebuild()
 		if worldSetup then
 			load(worldSetup).applyLighting()
 		end
-		load(services.CourseManager).build(nil, { Preview = true })
+		load(services.CourseManager).build({ Preview = true })
 		local lobbyManager = services:FindFirstChild("LobbyManager")
 		if lobbyManager then
 			load(lobbyManager).build({ Preview = true })

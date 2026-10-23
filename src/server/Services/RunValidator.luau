@@ -36,7 +36,6 @@ export type RunValidator = typeof(setmetatable(
 		shortcutsHit: { [string]: boolean },
 		expectNear: { Vector3 }?,
 		runDistance: number,
-		level: number,
 		insideHazard: number,
 		expectDeadline: number,
 		settledSince: number?,
@@ -53,7 +52,6 @@ function RunValidator.new(course: any): RunValidator
 		nextCheckpoint = 2,
 		shortcutsHit = {},
 		runDistance = 0,
-		level = 1,
 		insideHazard = 0,
 		expectNear = nil,
 		expectDeadline = 0,
@@ -73,19 +71,17 @@ function RunValidator.reset(self: RunValidator)
 	self.expectNear = nil
 end
 
-function RunValidator.setLevel(self: RunValidator, level: number)
-	self.level = level
+function RunValidator.setCourse(self: RunValidator, course: any)
+	self.course = course
 end
 
 -- Is the root inside a lethal hazard's core (death block, or a live laser)? An honest client
 -- respawns the instant it touches one, so the server only ever sees a sample or two inside.
 function RunValidator.insideLethal(self: RunValidator, position: Vector3, t: number): boolean
 	for _, def in self.course.Hazards or {} do
-		if HazardMath.activeForLevel(def, self.level) then
-			if def.Type == "Kill" or (def.Type == "Laser" and HazardMath.isOn(def, t)) then
-				if Geometry.pointInBox(position, def.CFrame, def.Size) then
-					return true
-				end
+		if def.Type == "Kill" or (def.Type == "Laser" and HazardMath.isOn(def, t)) then
+			if Geometry.pointInBox(position, def.CFrame, def.Size) then
+				return true
 			end
 		end
 	end
@@ -136,6 +132,33 @@ function RunValidator.windowVelocity(self: RunValidator, window: number): Vector
 		end
 	end
 	return nil
+end
+
+-- The fastest `window`-second average velocity (as a vector) among windows ending within the
+-- last `lookback` seconds. Right before an impact the owning client freezes the runner, and
+-- replication smooths that into a slow-down, so the final stretch under-reads the real speed.
+function RunValidator.peakVelocity(self: RunValidator, window: number, lookback: number, direction: Vector3): number
+	local samples = self.samples
+	local newest = samples[#samples]
+	if not newest then
+		return 0
+	end
+	local best = 0
+	for i = #samples, 1, -1 do
+		local endSample = samples[i]
+		if newest.t - endSample.t > lookback then
+			break
+		end
+		for j = i - 1, 1, -1 do
+			local startSample = samples[j]
+			if endSample.t - startSample.t >= window then
+				local along = ((endSample.p - startSample.p) / (endSample.t - startSample.t)):Dot(direction)
+				best = math.max(best, along)
+				break
+			end
+		end
+	end
+	return best
 end
 
 function RunValidator.wasNear(self: RunValidator, points: { Vector3 }, now: number, distance: number, lookback: number): boolean
@@ -269,12 +292,11 @@ function RunValidator.sample(self: RunValidator, now: number, position: Vector3,
 		local planePoint = target.Center + target.Normal * Config.Slam.TriggerOffset
 		local point, fraction = Geometry.planeCrossing(previous.p, position, planePoint, target.Normal)
 		if point and fraction then
-			local impactVelocity = self:windowVelocity(0.3)
 			table.insert(events, {
 				Type = "Impact",
 				Time = previous.t + (now - previous.t) * fraction,
 				Point = point,
-				Speed = if impactVelocity then math.max(-impactVelocity:Dot(target.Normal), 0) else 0,
+				Speed = self:peakVelocity(0.25, 0.5, -target.Normal),
 			})
 		end
 	end

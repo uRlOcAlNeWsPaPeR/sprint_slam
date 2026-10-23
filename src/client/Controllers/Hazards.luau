@@ -126,14 +126,14 @@ end
 
 -- Returns "Kill" when the runner touches something lethal, "Bonk" (+ push direction) for a
 -- spinner, or nil.
-function Hazards.check(self: Hazards, position: Vector3, t: number): (string?, Vector3?)
+function Hazards.check(self: Hazards, position: Vector3, t: number): (string?, Vector3?, any?)
 	for _, def in self.defs do
 		if not HazardMath.activeForLevel(def, self.level) then
 			continue
 		end
 		if def.Type == "Kill" or (def.Type == "Laser" and HazardMath.isOn(def, t)) then
 			if Geometry.pointInBox(position, def.CFrame, def.Size, BODY_MARGIN) then
-				return "Kill", nil
+				return "Kill", nil, def
 			end
 		elseif def.Type == "Spinner" and t - self.lastSpin > SPINNER_COOLDOWN then
 			if Geometry.pointInBox(position, HazardMath.spinnerCFrame(def, t), HazardMath.spinnerSize(def), BODY_MARGIN) then
@@ -142,11 +142,11 @@ function Hazards.check(self: Hazards, position: Vector3, t: number): (string?, V
 				local offset = Vector3.new(position.X - def.Center.X, 0, position.Z - def.Center.Z)
 				local outward = if offset.Magnitude > 0.1 then offset.Unit else Vector3.xAxis
 				local sweep = Vector3.yAxis:Cross(outward) * math.sign(def.Speed)
-				return "Bonk", sweep + outward * 0.5
+				return "Bonk", sweep + outward * 0.5, def
 			end
 		end
 	end
-	return nil, nil
+	return nil, nil, nil
 end
 
 -- Upcoming danger for the QA bot: true if a lethal hazard covers `point` at time `t`.

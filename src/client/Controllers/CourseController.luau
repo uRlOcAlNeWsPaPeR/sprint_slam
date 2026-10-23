@@ -26,6 +26,7 @@ local course: any = nil
 local path: Geometry.PathInfo? = nil
 local interactables: Interactables.Interactables? = nil
 local hazards: Hazards.Hazards? = nil
+local built: { [string]: { interactables: Interactables.Interactables, hazards: Hazards.Hazards, path: Geometry.PathInfo } } = {}
 local previousPosition: Vector3? = nil
 local progressDistance = 0
 
@@ -33,23 +34,26 @@ local function now(): number
 	return workspace:GetServerTimeNow()
 end
 
-function CourseController.init(activeCourse: any)
-	course = activeCourse
-	path = Geometry.buildPath(course.Path)
-	local root = workspace:WaitForChild("Course")
-	interactables = Interactables.new(course, root, function(eventType)
-		CourseController.Combo:Fire(eventType)
-	end)
-	hazards = Hazards.new(course, root)
-end
-
-function CourseController.setLevel(level: number)
-	if interactables then
-		interactables:setLevel(level)
+-- Points the controller at one challenge's course (built under workspace.Courses).
+function CourseController.setCourse(newCourse: any)
+	course = newCourse
+	local entry = built[newCourse.Id]
+	if not entry then
+		local root = workspace:WaitForChild("Courses"):WaitForChild(newCourse.Id)
+		entry = {
+			interactables = Interactables.new(newCourse, root, function(eventType)
+				CourseController.Combo:Fire(eventType)
+			end),
+			hazards = Hazards.new(newCourse, root),
+			path = Geometry.buildPath(newCourse.Path),
+		}
+		built[newCourse.Id] = entry
 	end
-	if hazards then
-		hazards:setLevel(level)
-	end
+	interactables = entry.interactables
+	hazards = entry.hazards
+	path = entry.path
+	previousPosition = nil
+	progressDistance = 0
 end
 
 function CourseController.getHazards(): Hazards.Hazards?
@@ -104,10 +108,10 @@ function CourseController.update(root: BasePart)
 
 	local t = now()
 	if hazards then
-		local contact, push = hazards:check(position, t)
+		local contact, push, def = hazards:check(position, t)
 		if contact == "Kill" then
 			previousPosition = nil
-			CourseController.Zapped:Fire()
+			CourseController.Zapped:Fire(def, position, t)
 			return
 		elseif contact == "Bonk" and push then
 			MovementController.bonk(push)

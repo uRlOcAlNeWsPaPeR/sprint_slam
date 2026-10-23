@@ -99,7 +99,10 @@ src/
     ScoreFormula.luau            pure scoring function (server + client preview)
     ComboTracker.luau            pure combo chain logic (server + client)
     Momentum.luau                run-average speed → launch speed → impact speed (server + client)
-    Lobby.luau                   THE HUB data: plaza, portals, parkour challenges
+    Lobby.luau                   THE HUB data: plaza, portals, parkour challenges, boards
+    CourseKit.luau               builds a challenge course from segments
+    HazardMath.luau              shared timing for lasers, spinners, blink floors
+    Weeks/                       the weekly schedule and each week's 10 challenge recipes
     Geometry.luau                plane crossings, OBB tests, path projection
     Net.luau                     RemoteEvent registry
     Signal.luau                  tiny signal class
@@ -117,6 +120,8 @@ src/
       RunValidator.luau          sampling, gate crossing, plausibility, impact detection
       ScoreService.luau          authoritative scoring, session bests
       WalletService.luau         coin balances (DataStore, session fallback)
+      ProgressService.luau       weekly in-order progression
+      BoardService.luau          weekly score/time boards and the Hall of Fame
   client/   → StarterPlayer.StarterPlayerScripts.Client
     Main.client.luau             bootstrap + single ordered update loop
     Controllers/
@@ -124,7 +129,9 @@ src/
       MovementController.luau    momentum, carving, slide, landings, collisions
       DashController.luau        dash, cooldown, dash FX
       Interactables.luau         pads, rings, moving obstacles for any world
-      CourseController.luau      course kill plane, launch trigger, progress
+      CourseController.luau      per-challenge course: kill plane, launch trigger, progress
+      Hazards.luau               hazards for the current course
+      ChallengeMenu.luau         portal menu: challenges, leaderboards, Hall of Fame
       LobbyController.luau       hub portals, parkour challenge timing, falls
       SlamController.luau        flight physics, steering, reticle, impact FX
       CameraController.luau      FOV by speed, trauma shake, flight camera
@@ -184,25 +191,49 @@ effects, poses, auras. `TeamService` scores teams from each member's best verifi
 `DailyChallengeService`: UTC day index → seeded selection among validated templates, plus safe
 parameter variation. Countdown to 00:00 UTC, practice mode for past courses (unranked).
 
-## 6. Levels
+## 6. Weekly challenges
 
-Levels reuse the Neon Rush layout and stack one new hazard type per level (data in
-`Courses/NeonRush.luau`, timing in `Shared/HazardMath.luau`):
+Every Sunday at 00:00 UTC a new week of **10 challenges** goes live (`Shared/Weeks/WeekN.luau`,
+listed in `Weeks/init.luau`). Each challenge is a `CourseKit` recipe: a short list of tested
+segments (runs, gaps, downhills, boost pads, death blocks, lasers, spinners, movers, pillar
+weaves, blink waves) that the kit turns into the full course data (platforms, hazards,
+checkpoints, a bot route, the slam runway and target). Challenge `i` sits in its own world
+slot, `i x 400` studs east of the first, so players on different challenges never meet.
 
-| Level | Name | New hazard | Rule |
-|---|---|---|---|
-| 1 | Neon Rush | - | base course |
-| 2 | Danger Zone | Death blocks | touch = respawn at last checkpoint; each leaves an 8+ stud lane |
-| 3 | Laser Grid | Laser gates | lethal while lit; dark ≥ 0.9 s per cycle; jumpable |
-| 4 | Spin Cycle | Spinners | feet-high rotating bars; contact knocks you away |
-| 5 | Blink Out | Blink floors | S-bend floor lit in a wave at 50 st/s; ride it at 40-70 |
+| # | Challenge | Introduces | Length |
+|---|---|---|---:|
+| 1 | Neon Rush | boosts, gaps, downhill | ~1320 |
+| 2 | Danger Zone | death blocks | ~1240 |
+| 3 | Laser Grid | laser gates | ~1240 |
+| 4 | Spin Cycle | spinners | ~1240 |
+| 5 | Blink Out | blink floors | ~1640 |
+| 6 | Pillar Punch | pillar fields | ~1280 |
+| 7 | Sweep Shot | sweeping blocks | ~1340 |
+| 8 | Death Slalom | alternating death-block slopes | ~1240 |
+| 9 | Gauntlet | combinations | ~1340 |
+| 10 | Grand Slam | everything, 75 s round | ~2160 |
 
-Hazards for every level are built once. Each client shows and collides with only its own
-level's set, so players on different levels share one world. The server rejects runs that
-sit inside a death block or live laser for 3+ samples. Any verified slam unlocks the next
-level (`ProgressService`, DataStore-backed). `src/tests/Levels.spec` checks that every level
-and hub challenge is beatable with the game's own jump physics and hazard timing, and that
-no checkpoint respawns you on a hazard.
+**Progression** (`ProgressService`, per week): the first time through, challenge `n + 1` unlocks
+only after a server-verified slam on challenge `n`. Once all ten are cleared, any can be
+replayed. The server enforces it (`RequestMode` checks `isUnlocked`).
+
+**Leaderboards** (`BoardService`, OrderedDataStores per week x challenge x kind): **Best Score**
+(highest final score; time already earns points at 10 per second left at launch) and **Fastest
+Time** (GO to launch). Only verified impacts submit, and a player's entry only ever improves.
+
+**Hall of Fame**: when a newer week starts, the previous week is finalized once: the top
+player on each of its 20 boards is inducted, plus the champion (most board wins). It is shown
+on the wall in the hub and in the portal menu's Hall of Fame tab.
+
+**Anti-cheat and measurement**: the server rejects runs that sit inside a death block or live
+laser for 3+ samples; impact speed is measured from the fastest 0.25 s window just before the
+hit (the hit-stop freeze would otherwise drag the average down) and capped by the momentum the
+server measured.
+
+**Tests** (`Weeks.spec`, `Boards.spec`, `Validator.spec`): 10 unique challenges, 1100+ studs
+each, every gap jumpable, every death-block lane 8+ wide, lasers dark 0.8+ s, blink waves ride
+at 40-70 st/s, no respawn beside a hazard, checkpoints at most 450 studs apart, in-order
+progression, board ordering, and Hall of Fame induction.
 
 ## 7. The Hub
 

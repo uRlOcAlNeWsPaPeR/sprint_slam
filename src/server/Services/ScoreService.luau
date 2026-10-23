@@ -65,6 +65,7 @@ end
 
 export type ImpactInputs = {
 	course: any,
+	roundTime: number,
 	goTime: number,
 	launch: { Time: number, Momentum: number },
 	serverImpact: { Point: Vector3, Speed: number }?,
@@ -100,7 +101,7 @@ function ScoreService.scoreImpact(inputs: ImpactInputs): (ScoreFormula.Breakdown
 			launchTime = claim.LaunchTime
 		end
 	end
-	local roundTime = Config.Round.RoundTime
+	local roundTime = inputs.roundTime
 	local timeRemaining = math.clamp(inputs.goTime + roundTime - launchTime, 0, roundTime)
 
 	local target = inputs.course.Target

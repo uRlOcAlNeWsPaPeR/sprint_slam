@@ -7,6 +7,7 @@ local Shared = ReplicatedStorage.Shared
 local ComboTracker = require(Shared.ComboTracker)
 local Config = require(Shared.Config)
 local Courses = require(Shared.Courses)
+local Weeks = require(Shared.Weeks)
 local Geometry = require(Shared.Geometry)
 local Momentum = require(Shared.Momentum)
 local ScoreFormula = require(Shared.ScoreFormula)
@@ -156,7 +157,7 @@ return function(t)
 		t.near(Geometry.distanceAlongPath(path, Vector3.new(40, 2, -98)), 140)
 	end)
 
-	local course = Courses.get("NeonRush")
+	local course = Courses.forWeek(Weeks.current(os.time()))[1]
 	local target = course.Target
 	local triggerPoint = target.Center + target.Normal * Config.Slam.TriggerOffset
 
@@ -164,6 +165,7 @@ return function(t)
 		local cap = ScoreService.impactSpeedCap(60)
 		local breakdown = ScoreService.scoreImpact({
 			course = course,
+			roundTime = 45,
 			goTime = 0,
 			launch = { Time = 25, Momentum = 60 },
 			serverImpact = { Point = triggerPoint, Speed = 300 },
@@ -179,6 +181,7 @@ return function(t)
 	t.test("server caps a claimed impact speed by what it observed", function()
 		local breakdown = ScoreService.scoreImpact({
 			course = course,
+			roundTime = 45,
 			goTime = 0,
 			launch = { Time = 25, Momentum = 80 },
 			serverImpact = { Point = triggerPoint, Speed = 120 },
@@ -195,6 +198,7 @@ return function(t)
 	t.test("server ignores a claimed hit point far from its own", function()
 		local breakdown = ScoreService.scoreImpact({
 			course = course,
+			roundTime = 45,
 			goTime = 0,
 			launch = { Time = 30, Momentum = 80 },
 			serverImpact = { Point = triggerPoint + Vector3.new(0, 25, 0), Speed = 110 },
@@ -210,6 +214,7 @@ return function(t)
 	t.test("unobserved impact is rejected", function()
 		local breakdown, reason = ScoreService.scoreImpact({
 			course = course,
+			roundTime = 45,
 			goTime = 0,
 			launch = { Time = 30, Momentum = 80 },
 			claim = { Point = triggerPoint, Speed = 110, LaunchTime = 30 },

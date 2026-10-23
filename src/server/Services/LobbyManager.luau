@@ -105,6 +105,54 @@ local function buildPortals(parent: Instance)
 	end
 end
 
+-- Board walls (Hall of Fame): a backing panel with an empty rich-text label the client fills
+-- in from server data.
+local function buildBoards(parent: Instance)
+	for _, def in Lobby.Boards do
+		local backing = part({
+			Name = def.Name .. "Board",
+			CFrame = def.CFrame,
+			Size = Vector3.new(def.Size.X, def.Size.Y, 0.4),
+			Color = Palette.Charcoal,
+			CanCollide = false,
+			Parent = parent,
+		})
+		neon(backing, def.CFrame * CFrame.new(0, def.Size.Y / 2 + 0.3, 0), Vector3.new(def.Size.X + 0.6, 0.4, 0.5), Palette.Orange)
+		neon(backing, def.CFrame * CFrame.new(0, -def.Size.Y / 2 - 0.3, 0), Vector3.new(def.Size.X + 0.6, 0.4, 0.5), Palette.Orange)
+		local gui = Instance.new("SurfaceGui")
+		gui.Name = "Gui"
+		gui.Face = Enum.NormalId.Front
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 24
+		gui.LightInfluence = 0
+		gui.Brightness = 1.5
+		gui.Parent = backing
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.BackgroundTransparency = 1
+		title.Size = UDim2.new(1, 0, 0.13, 0)
+		title.Font = Enum.Font.GothamBlack
+		title.TextScaled = true
+		title.Text = def.Title
+		title.TextColor3 = Palette.Orange
+		title.Parent = gui
+		local body = Instance.new("TextLabel")
+		body.Name = "Body"
+		body.BackgroundTransparency = 1
+		body.Position = UDim2.new(0.04, 0, 0.14, 0)
+		body.Size = UDim2.new(0.92, 0, 0.84, 0)
+		body.Font = Enum.Font.GothamMedium
+		body.RichText = true
+		body.TextScaled = true
+		body.TextWrapped = true
+		body.TextXAlignment = Enum.TextXAlignment.Left
+		body.TextYAlignment = Enum.TextYAlignment.Top
+		body.Text = "Loading..."
+		body.TextColor3 = Palette.White
+		body.Parent = gui
+	end
+end
+
 local function buildMarkers(parent: Instance)
 	-- Spawn pad.
 	local spawnFloor = Vector3.new(Lobby.Spawn.Position.X, Lobby.Origin.Y, Lobby.Spawn.Position.Z)
@@ -149,6 +197,7 @@ function LobbyManager.build(options: { Preview: boolean? }?)
 	BuildKit.arches(Lobby.Arches, decorFolder)
 	BuildKit.signs(Lobby.Signs, decorFolder)
 	buildMarkers(decorFolder)
+	buildBoards(decorFolder)
 	buildPortals(folder("Portals", root))
 	if options and options.Preview then
 		root.Archivable = false

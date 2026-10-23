@@ -1,7 +1,8 @@
 --!strict
 -- Client state machine for the hub and Sprint Slam runs. Predicts everything locally for
 -- instant feel (countdown, timer, combos, impact) and defers to the server's RunState /
--- RunResult for the truth. The server decides when you are in the hub or in a run.
+-- RunResult for the truth. The server decides when you are in the hub or in a run, and which
+-- of the week's ten challenges (each its own course) a run is on.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +14,7 @@ local Config = require(Shared.Config)
 local Net = require(Shared.Net)
 
 local CameraController = require(script.Parent.CameraController)
+local ChallengeMenu = require(script.Parent.ChallengeMenu)
 local CourseController = require(script.Parent.CourseController)
 local DashController = require(script.Parent.DashController)
 local DevAutopilot = require(script.Parent.DevAutopilot)
@@ -43,9 +45,11 @@ local resultDeadline: number? = nil
 local resultsShownAt = 0
 local pendingResult: any = nil
 local course: any = nil
-local level = 1
-local unlockedLevel = 1
-local levelBests: { [string]: number } = {}
+local week: any = nil
+local courses: { any } = {}
+local challenge = 1
+-- Weekly progress as last reported by the server.
+local progress = { Cleared = 0, Unlocked = 1, AllCleared = false, Bests = {} :: { [string]: any } }
 local remotes: { [string]: RemoteEvent } = {}
 
 local function now(): number
@@ -56,8 +60,17 @@ local function setState(newState: string)
 	state = newState
 end
 
+local function useCourse(newCourse: any)
+	course = newCourse
+	CourseController.setCourse(newCourse)
+	SlamController.setCourse(newCourse)
+	UIController.setCourse(newCourse)
+	DevAutopilot.setCourse(newCourse)
+end
+
 local function enterCountdown()
 	SlamController.cleanup()
+	useCourse(courses[challenge])
 	MovementController.setEnabled(false)
 	-- Always start on the line at rest: entering from the pit (next level) or the hub would
 	-- otherwise carry leftover velocity into the countdown and read as a false start.
@@ -74,11 +87,9 @@ local function enterCountdown()
 	pendingResult = nil
 	resultDeadline = nil
 	UIController.resetRun()
-	CourseController.setLevel(level)
-	DevAutopilot.setLevel(level)
-	UIController.setRunLabel(level, course.Levels[level])
+	UIController.setRunLabel(challenge, course)
 	UIController.setMode("Run")
-	UIController.showLevelIntro(level, course.Levels[level])
+	UIController.showLevelIntro(challenge, course)
 	DevAutopilot.reset()
 	UIController.showCountdown(goTime)
 	setState("Countdown")
@@ -86,6 +97,7 @@ end
 
 -- In the hub you move freely with the full movement kit; no timer, no scoring.
 local function enterLobby()
+	DevAutopilot.log("entering the hub (state was " .. state .. ")")
 	SlamController.cleanup()
 	MovementController.reset()
 	MovementController.setEnabled(true)
@@ -111,9 +123,14 @@ local function onRunState(payload: any)
 	roundTime = payload.RoundTime
 	UIController.setBest(payload.BestScore)
 	UIController.setCoins(payload.CoinBalance)
-	level = payload.Level or level
-	unlockedLevel = payload.UnlockedLevel or unlockedLevel
-	levelBests = payload.LevelBests or levelBests
+	challenge = payload.Challenge or challenge
+	progress.Cleared = payload.Cleared or progress.Cleared
+	progress.Unlocked = payload.Unlocked or progress.Unlocked
+	progress.AllCleared = payload.AllCleared == true
+	progress.Bests = payload.Bests or progress.Bests
+	if ChallengeMenu.isOpen() then
+		ChallengeMenu.open(progress)
+	end
 	if payload.State == "Countdown" and isNewRun then
 		enterCountdown()
 	elseif payload.State == "Lobby" and state ~= "Lobby" then
@@ -141,12 +158,20 @@ local function showResult(payload: any)
 	resultsShownAt = os.clock()
 	local b = payload.Breakdown or {}
 	DevAutopilot.log(string.format(
-		"result L%s: %s reason=%s momentum=%s impact=%s power=%s zone=%s time=+%s combo=+%s final=%s coins=+%s best=%s",
-		tostring(payload.Level), tostring(b.Outcome), tostring(payload.Reason), tostring(b.Momentum), tostring(b.ImpactSpeed),
+		"result C%s: %s reason=%s momentum=%s impact=%s power=%s zone=%s time=+%s combo=+%s final=%s coins=+%s best=%s",
+		tostring(payload.Challenge), tostring(b.Outcome), tostring(payload.Reason), tostring(b.Momentum), tostring(b.ImpactSpeed),
 		tostring(b.ImpactPower), tostring(b.Zone), tostring(b.TimeBonus), tostring(b.ComboBonus),
 		tostring(b.Final), tostring(payload.Coins), tostring(payload.BestScore)
 	))
-	unlockedLevel = payload.UnlockedLevel or unlockedLevel
+	progress.Cleared = payload.Cleared or progress.Cleared
+	progress.Unlocked = payload.Unlocked or progress.Unlocked
+	progress.AllCleared = payload.AllCleared == true
+	if payload.Challenge and (payload.BestScore or payload.BestTimeMs) then
+		progress.Bests[tostring(payload.Challenge)] = { Score = payload.BestScore, TimeMs = payload.BestTimeMs }
+	end
+	if payload.TimeMs then
+		DevAutopilot.log(string.format("run time %.2fs, cleared=%s newlyCleared=%s", payload.TimeMs / 1000, tostring(payload.Cleared), tostring(payload.NewlyCleared)))
+	end
 	UIController.setFlight(false)
 	UIController.showResults(payload)
 	UIController.setBest(payload.BestScore)
@@ -203,22 +228,26 @@ function RunController.restart()
 	remotes.RequestRestart:FireServer()
 end
 
--- Start (or switch to) a Sprint Slam level; the server checks it is unlocked.
-function RunController.chooseLevel(chosen: number)
-	if chosen > unlockedLevel or chosen > #course.Levels then
-		UIController.toast("LOCKED - CLEAR LEVEL " .. tostring(chosen - 1) .. " FIRST", Config.Palette.Muted, 1.2)
+-- Start (or switch to) one of the week's challenges; the server checks it is unlocked.
+function RunController.chooseChallenge(chosen: number)
+	if chosen < 1 or chosen > #courses then
 		return
 	end
-	if state == "Lobby" and not UIController.isLevelSelectOpen() then
+	local unlocked = progress.AllCleared or chosen <= progress.Unlocked
+	if not unlocked then
+		UIController.toast("LOCKED - CLEAR CHALLENGE " .. tostring(chosen - 1) .. " FIRST", Config.Palette.Muted, 1.2)
 		return
 	end
-	UIController.hideLevelSelect()
+	if state == "Lobby" and not ChallengeMenu.isOpen() then
+		return
+	end
+	ChallengeMenu.close()
 	remotes.RequestMode:FireServer("SprintSlam", chosen)
 end
 
-function RunController.nextLevel()
-	if state == "Results" and level < #course.Levels and unlockedLevel > level then
-		RunController.chooseLevel(level + 1)
+function RunController.nextChallenge()
+	if state == "Results" and challenge < #courses and (progress.AllCleared or progress.Unlocked > challenge) then
+		RunController.chooseChallenge(challenge + 1)
 	end
 end
 
@@ -228,7 +257,14 @@ function RunController.returnToLobby()
 	end
 end
 
-local function zapped()
+local function zapped(def: any, position: Vector3?, t: number?)
+	if def and position and t then
+		local on = if def.Period then require(ReplicatedStorage.Shared.HazardMath).isOn(def, t) else nil
+		DevAutopilot.log(string.format(
+			"zapped by %s at %s (hazard z=%.1f, on=%s, speed=%.0f, grounded=%s)",
+			def.Type, tostring(position), def.CFrame.Position.Z, tostring(on), MovementController.getActualSpeed(), tostring(MovementController.isGrounded())
+		) .. string.format(" sliding=%s", tostring(MovementController.isSliding())))
+	end
 	local respawnAt = course.Checkpoints[checkpoint].Respawn
 	MovementController.teleport(respawnAt)
 	CourseController.forgetPosition()
@@ -236,6 +272,7 @@ local function zapped()
 	CameraController.shake(0.6)
 	EffectsController.burst(Config.Palette.Danger, 30)
 	UIController.toast("ZAPPED!", Config.Palette.Danger, 0.8)
+	DevAutopilot.resync()
 	DevAutopilot.log(string.format("zapped; respawn at checkpoint %d", checkpoint))
 end
 
@@ -246,6 +283,7 @@ local function respawn()
 	remotes.RequestRespawn:FireServer(runId)
 	CameraController.shake(0.3)
 	UIController.toast("RESPAWN", Config.Palette.Orange, 0.7)
+	DevAutopilot.resync()
 end
 
 -- Launch speed comes from momentum (the whole run), not the speed at the lip.
@@ -307,8 +345,11 @@ function RunController.update(dt: number)
 	if state == "Lobby" and root then
 		MovementController.update(dt)
 		LobbyController.update(root)
-		if UIController.isLevelSelectOpen() and not LobbyController.isInPortal() then
-			UIController.hideLevelSelect()
+		if ChallengeMenu.isOpen() then
+			ChallengeMenu.update()
+			if not LobbyController.isInPortal() then
+				ChallengeMenu.close()
+			end
 		end
 	elseif state == "Running" and root then
 		MovementController.update(dt)
@@ -329,9 +370,9 @@ function RunController.update(dt: number)
 	end
 
 	if state == "Results" and DevAutopilot.shouldLoop() and os.clock() - resultsShownAt > 3 then
-		if DevAutopilot.shouldAdvance() and level < #course.Levels and unlockedLevel > level then
+		if DevAutopilot.shouldAdvance() and challenge < #courses and (progress.AllCleared or progress.Unlocked > challenge) then
 			resultsShownAt = math.huge -- one request per result
-			RunController.nextLevel()
+			RunController.nextChallenge()
 		else
 			RunController.restart()
 		end
@@ -378,15 +419,35 @@ local function bindCharacter(character: Model)
 	SlamController.cleanup()
 end
 
-function RunController.init(activeCourse: any, activeLobby: any)
-	course = activeCourse
-	DevAutopilot.init(activeCourse, activeLobby)
+function RunController.init(activeWeek: any, allCourses: { any }, activeLobby: any)
+	week = activeWeek
+	courses = allCourses
+	course = allCourses[1]
+	DevAutopilot.init(allCourses, activeLobby)
 	for _, name in Net.Names do
 		remotes[name] = Net.get(name)
 	end
 	remotes.RunState.OnClientEvent:Connect(onRunState)
 	remotes.Checkpoint.OnClientEvent:Connect(onCheckpoint)
 	remotes.RunResult.OnClientEvent:Connect(onRunResult)
+	remotes.BoardData.OnClientEvent:Connect(function(data: any)
+		ChallengeMenu.showBoard(data)
+	end)
+	remotes.HallOfFameData.OnClientEvent:Connect(function(list: any)
+		ChallengeMenu.showHallOfFame(list)
+		LobbyController.setHallOfFame(list, courses, ChallengeMenu.hallLines)
+	end)
+	ChallengeMenu.BoardRequested:Connect(function(index: number)
+		remotes.RequestBoard:FireServer(index)
+	end)
+	ChallengeMenu.HallOfFameRequested:Connect(function()
+		remotes.RequestHallOfFame:FireServer()
+	end)
+	ChallengeMenu.ChallengeChosen:Connect(RunController.chooseChallenge)
+	-- The in-world Hall of Fame board loads once the hub is ready.
+	task.delay(2, function()
+		remotes.RequestHallOfFame:FireServer()
+	end)
 
 	MovementController.Combo:Connect(onCombo)
 	DashController.Combo:Connect(onCombo)
@@ -400,17 +461,16 @@ function RunController.init(activeCourse: any, activeLobby: any)
 
 	LobbyController.EnterRequested:Connect(function(mode: string)
 		if state == "Lobby" and mode == "SprintSlam" then
-			UIController.showLevelSelect(unlockedLevel, levelBests)
+			ChallengeMenu.open(progress)
 		end
 	end)
-	UIController.LevelChosen:Connect(RunController.chooseLevel)
 	InputController.LevelKey:Connect(function(chosen: number)
-		if UIController.isLevelSelectOpen() then
-			RunController.chooseLevel(chosen)
+		if ChallengeMenu.isOpen() then
+			RunController.chooseChallenge(chosen)
 		end
 	end)
-	UIController.NextLevelClicked:Connect(RunController.nextLevel)
-	InputController.NextLevel:Connect(RunController.nextLevel)
+	UIController.NextLevelClicked:Connect(RunController.nextChallenge)
+	InputController.NextLevel:Connect(RunController.nextChallenge)
 	CourseController.Zapped:Connect(zapped)
 	LobbyController.FellOut:Connect(function(respawnAt: CFrame, challengeName: string?)
 		MovementController.teleport(respawnAt)

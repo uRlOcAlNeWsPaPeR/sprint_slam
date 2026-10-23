@@ -35,6 +35,7 @@ local lobby = {
 	Signs = {},
 	Portals = {},
 	Challenges = {},
+	Boards = {},
 	Halo = { Center = at(0, 46, 0), Radius = 22 },
 }
 
@@ -114,6 +115,13 @@ for _, angle in { 45, 135, 225, 315 } do
 	local a = math.rad(angle)
 	table.insert(lobby.Columns, { Base = at(math.cos(a) * 58, 0, math.sin(a) * 58), Radius = 1.6, Height = 30, Accent = "Cyan" })
 end
+-- The Hall of Fame wall: weekly champions, filled in by the client from server data.
+table.insert(lobby.Boards, {
+	Name = "HallOfFame",
+	CFrame = facing(at(40, 10, 8), spawnPosition),
+	Size = Vector2.new(24, 18),
+	Title = "HALL OF FAME",
+})
 sign(
 	"HOW TO PLAY\n\nWASD  run     SPACE  jump\nSHIFT  dash     CTRL  slide\n\nWalk into the portal to play\nR  restart a challenge\nL  back to the hub",
 	at(-40, 9, 8),

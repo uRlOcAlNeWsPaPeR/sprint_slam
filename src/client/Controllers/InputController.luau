@@ -42,7 +42,18 @@ function InputController.init()
 	bind("SprintSlamRestart", InputController.Restart, nil, nil, Enum.KeyCode.R, Enum.KeyCode.ButtonY)
 	bind("SprintSlamLobby", InputController.Lobby, nil, nil, Enum.KeyCode.L, Enum.KeyCode.ButtonSelect)
 	bind("SprintSlamNextLevel", InputController.NextLevel, nil, nil, Enum.KeyCode.N)
-	local levelKeys = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }
+	local levelKeys = {
+		Enum.KeyCode.One,
+		Enum.KeyCode.Two,
+		Enum.KeyCode.Three,
+		Enum.KeyCode.Four,
+		Enum.KeyCode.Five,
+		Enum.KeyCode.Six,
+		Enum.KeyCode.Seven,
+		Enum.KeyCode.Eight,
+		Enum.KeyCode.Nine,
+		Enum.KeyCode.Zero, -- challenge 10
+	}
 	for level, keyCode in levelKeys do
 		ContextActionService:BindAction("SprintSlamLevel" .. level, function(_, state)
 			if state == Enum.UserInputState.Begin then
