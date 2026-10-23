@@ -15,6 +15,7 @@
 -- The kit also writes a BotRoute (lane choices, jumps, slides, blink-wave waits) that the
 -- Studio QA bot follows, which doubles as proof the course can be completed.
 
+local Config = require(script.Parent.Config)
 local Geometry = require(script.Parent.Geometry)
 
 local THICKNESS = 2
@@ -316,7 +317,7 @@ function CourseKit.spinner(self: Kit, off: number, length: number, speed: number
 		Length = length,
 		Thickness = 1.2,
 		Height = 1.5,
-		Speed = speed,
+		Speed = speed * Config.Hazards.SpinnerSpeedScale,
 		Phase = 0,
 	})
 	return self

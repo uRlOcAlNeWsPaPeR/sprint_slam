@@ -179,6 +179,10 @@ Config.Validation = {
 	NearLookback = 0.8,
 }
 
+Config.Hazards = {
+	SpinnerSpeedScale = 1.6, -- multiplies every spinner's rad/s in the weekly recipes
+}
+
 Config.Camera = {
 	BaseFov = 70,
 	MaxFov = 96,
