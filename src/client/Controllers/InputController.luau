@@ -13,6 +13,7 @@ InputController.Dash = Signal.new()
 InputController.Slide = Signal.new()
 InputController.Restart = Signal.new()
 InputController.Lobby = Signal.new()
+InputController.Music = Signal.new()
 InputController.LevelKey = Signal.new() -- (level: number) number keys 1-5
 InputController.NextLevel = Signal.new()
 
@@ -41,6 +42,7 @@ function InputController.init()
 	bind("SprintSlamSlide", InputController.Slide, "SLIDE", UDim2.new(1, -250, 1, -90), Enum.KeyCode.LeftControl, Enum.KeyCode.C, Enum.KeyCode.ButtonB)
 	bind("SprintSlamRestart", InputController.Restart, nil, nil, Enum.KeyCode.R, Enum.KeyCode.ButtonY)
 	bind("SprintSlamLobby", InputController.Lobby, nil, nil, Enum.KeyCode.L, Enum.KeyCode.ButtonSelect)
+	bind("SprintSlamMusic", InputController.Music, nil, nil, Enum.KeyCode.M)
 	bind("SprintSlamNextLevel", InputController.NextLevel, nil, nil, Enum.KeyCode.N)
 	local levelKeys = {
 		Enum.KeyCode.One,

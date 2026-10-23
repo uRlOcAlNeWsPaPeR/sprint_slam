@@ -421,6 +421,7 @@ function DevAutopilot.update(state: string)
 		return
 	end
 	if state == "Lobby" then
+		require(script.Parent.TitleScreen).dismiss() -- the QA bot skips the cover screen
 		lobbyStep()
 	elseif state == "Running" then
 		followRoute(course.BotRoute, course.MovingObstacles, course.Hazards, true)

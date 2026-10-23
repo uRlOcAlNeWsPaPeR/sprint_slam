@@ -210,6 +210,16 @@ Config.Palette = {
 	Blink = Color3.fromRGB(170, 90, 255), -- blink floors
 }
 
+-- Background music (free Creator Store tracks by DistroKid). Swap an id to change a track;
+-- an empty id means no music for that scene. Players can mute with M or the music button.
+Config.Music = {
+	Hub = "126463622617576", -- "Chill Electronic Lofi Beats": title screen and hub
+	Run = "110213863394929", -- "Lofi Electronic Chill": during runs
+	HubVolume = 0.4,
+	RunVolume = 0.25, -- quieter so run sounds stay clear
+	FadeSeconds = 1.2,
+}
+
 -- Fill in audio asset ids to enable sounds; empty ids are skipped silently.
 Config.Sounds = {
 	Countdown = "",

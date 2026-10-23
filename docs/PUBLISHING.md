@@ -24,6 +24,12 @@ Add `src/shared/Weeks/WeekN.luau` (copy Week1, `StartsAt` = the Sunday 00:00 UTC
 `Weeks/init.luau`, rebuild and publish before that Sunday. The previous week is inducted into
 the Hall of Fame by the first server that starts after the new week begins.
 
+## Music and cover screen
+Music ids are in `Config.Music` (free DistroKid tracks from the Creator Store: "Chill Electronic
+Lofi Beats" for the hub, "Lofi Electronic Chill" for runs). To change a track, put another
+audio asset id there. Make sure the audio is free to use or owned by your account.
+The cover screen is `TitleScreen.luau`; players press PLAY (click, tap or Space) to start.
+
 ## Known gaps
-- No audio yet (`Config.Sounds` ids are empty).
+- Sound effects (dash, boost, impact) are still empty (`Config.Sounds` ids).
 - Touch controls are untested on a real device.

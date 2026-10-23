@@ -15,6 +15,8 @@ local Net = require(Shared.Net)
 
 local CameraController = require(script.Parent.CameraController)
 local ChallengeMenu = require(script.Parent.ChallengeMenu)
+local MusicController = require(script.Parent.MusicController)
+local TitleScreen = require(script.Parent.TitleScreen)
 local CourseController = require(script.Parent.CourseController)
 local DashController = require(script.Parent.DashController)
 local DevAutopilot = require(script.Parent.DevAutopilot)
@@ -49,6 +51,7 @@ local week: any = nil
 local courses: { any } = {}
 local challenge = 1
 -- Weekly progress as last reported by the server.
+local lobbyLocked = false
 local progress = { Cleared = 0, Unlocked = 1, AllCleared = false, Bests = {} :: { [string]: any } }
 local remotes: { [string]: RemoteEvent } = {}
 
@@ -89,6 +92,7 @@ local function enterCountdown()
 	UIController.resetRun()
 	UIController.setRunLabel(challenge, course)
 	UIController.setMode("Run")
+	MusicController.setScene("Run")
 	UIController.showLevelIntro(challenge, course)
 	DevAutopilot.reset()
 	UIController.showCountdown(goTime)
@@ -109,6 +113,7 @@ local function enterLobby()
 	frozenTimeLeft = nil
 	UIController.resetRun()
 	UIController.setMode("Lobby")
+	MusicController.setScene("Hub")
 	DevAutopilot.reset()
 	setState("Lobby")
 end
@@ -343,6 +348,13 @@ function RunController.update(dt: number)
 	local root = MovementController.getRoot()
 	DevAutopilot.update(state)
 	if state == "Lobby" and root then
+		-- The cover screen holds the player in place until they press PLAY.
+		local locked = TitleScreen.isOpen()
+		if locked ~= lobbyLocked then
+			lobbyLocked = locked
+			MovementController.setEnabled(not locked)
+			InputController.setMovementEnabled(not locked)
+		end
 		MovementController.update(dt)
 		LobbyController.update(root)
 		if ChallengeMenu.isOpen() then

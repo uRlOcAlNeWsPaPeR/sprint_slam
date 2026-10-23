@@ -19,6 +19,8 @@ local LobbyController = require(Controllers.LobbyController)
 local SlamController = require(Controllers.SlamController)
 local UIController = require(Controllers.UIController)
 local ChallengeMenu = require(Controllers.ChallengeMenu)
+local MusicController = require(Controllers.MusicController)
+local TitleScreen = require(Controllers.TitleScreen)
 local RunController = require(Controllers.RunController)
 
 -- The server publishes which week is live before players load in; the ten courses are then
@@ -38,6 +40,9 @@ SlamController.init()
 UIController.init(courses)
 ChallengeMenu.init(week, courses)
 RunController.init(week, courses, Lobby)
+MusicController.init()
+InputController.Music:Connect(MusicController.toggleMute)
+TitleScreen.init(week)
 
 -- Gameplay normally updates every rendered frame. If rendering stalls (an occluded or
 -- backgrounded window), the physics tick keeps the game running so timers, hazards and
