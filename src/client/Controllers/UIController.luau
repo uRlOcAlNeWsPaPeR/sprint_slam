@@ -10,6 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Signal = require(Shared.Signal)
+local Sfx = require(script.Parent.Sfx)
 
 local Palette = Config.Palette
 
@@ -951,6 +952,9 @@ function UIController.showCountdown(goTime: number)
 end
 
 local function popCountdown(text: string, color: Color3)
+	if tonumber(text) then
+		Sfx.play("Countdown", 0.4, 1.0 + (3 - tonumber(text)) * 0.15)
+	end
 	countdownLabel.Text = text
 	countdownLabel.TextColor3 = color
 	fadeText(countdownLabel, true)

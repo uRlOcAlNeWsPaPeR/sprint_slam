@@ -136,6 +136,7 @@ function Interactables.checkObstacles(self: Interactables, root: BasePart, posit
 			local travel = Vector3.new(v.X, 0, v.Z)
 			local back = if travel.Magnitude > 1 then -travel.Unit * 0.6 else Vector3.zero
 			MovementController.bonk(sweep + back)
+			Sfx.play("Bonk", 0.7, 1.4)
 			CameraController.shake(0.45)
 			EffectsController.burst(Config.Palette.White, 16)
 			return

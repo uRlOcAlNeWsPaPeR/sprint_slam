@@ -30,6 +30,9 @@ Lofi Beats" for the hub, "Lofi Electronic Chill" for runs). To change a track, p
 audio asset id there. Make sure the audio is free to use or owned by your account.
 The cover screen is `TitleScreen.luau`; players press PLAY (click, tap or Space) to start.
 
+Sound effects (`Config.Sounds`) come from the free Pro Sound Effects library: dash and launch
+whooshes, boost/combo/checkpoint chimes, countdown, zap, bonk, impact booms and a results sting.
+Swap any id to change a sound.
+
 ## Known gaps
-- Sound effects (dash, boost, impact) are still empty (`Config.Sounds` ids).
 - Touch controls are untested on a real device.

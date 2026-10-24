@@ -148,6 +148,7 @@ local function onCheckpoint(payload: any)
 		return
 	end
 	checkpoint = payload.Index
+	Sfx.play("Checkpoint", 0.35, 1.4)
 	UIController.split(payload.Delta)
 	DevAutopilot.log(string.format("checkpoint %d at %.2fs", payload.Index, payload.Split))
 end
@@ -209,6 +210,7 @@ local function onCombo(eventType: string)
 	end
 	remotes.ComboEvent:FireServer(runId, eventType)
 	local def = Config.Combo.Events[eventType]
+	Sfx.play("Combo", 0.3, 1.15 + (multiplier - 1) * 0.2)
 	UIController.combo(def.Label, points, multiplier, combo.total)
 end
 
@@ -275,6 +277,7 @@ local function zapped(def: any, position: Vector3?, t: number?)
 	CourseController.forgetPosition()
 	remotes.RequestRespawn:FireServer(runId)
 	CameraController.shake(0.6)
+	Sfx.play("Zap", 0.8)
 	EffectsController.burst(Config.Palette.Danger, 30)
 	UIController.toast("ZAPPED!", Config.Palette.Danger, 0.8)
 	DevAutopilot.resync()

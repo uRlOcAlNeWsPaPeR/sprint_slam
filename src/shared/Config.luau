@@ -220,17 +220,22 @@ Config.Music = {
 	FadeSeconds = 1.2,
 }
 
--- Fill in audio asset ids to enable sounds; empty ids are skipped silently.
+-- Sound effects: free "Pro Sound Effects" library assets from the Creator Store. Swap an id to
+-- change a sound; an empty id skips it silently.
 Config.Sounds = {
-	Countdown = "",
-	Go = "",
-	Dash = "",
-	Boost = "",
+	Countdown = "9116394876", -- soft chime per countdown number
+	Go = "9116394756", -- chime shimmer
+	Dash = "9120711172", -- fast whoosh
+	Boost = "9116394545", -- energy chime (pads and rings)
 	Land = "",
-	Launch = "",
-	Impact = "",
-	ImpactBig = "",
-	Results = "",
+	Launch = "9120716870", -- long whoosh off the ramp
+	Impact = "9125404320", -- boom
+	ImpactBig = "9125402735", -- deeper boom for bullseyes
+	Results = "9116395179", -- magic glow for the results screen
+	Combo = "9116394545", -- played quietly, pitched up with the chain
+	Checkpoint = "9116394876",
+	Zap = "9114277757", -- electric zap on death blocks and lasers
+	Bonk = "9125403433", -- thump when you hit a block or spinner
 }
 
 return Config

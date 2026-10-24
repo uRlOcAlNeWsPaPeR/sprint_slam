@@ -14,6 +14,7 @@ local EffectsController = require(script.Parent.EffectsController)
 local Hazards = require(script.Parent.Hazards)
 local Interactables = require(script.Parent.Interactables)
 local MovementController = require(script.Parent.MovementController)
+local Sfx = require(script.Parent.Sfx)
 
 local CourseController = {}
 
@@ -115,6 +116,7 @@ function CourseController.update(root: BasePart)
 			return
 		elseif contact == "Bonk" and push then
 			MovementController.bonk(push)
+			Sfx.play("Bonk", 0.7, 1.4)
 			CameraController.shake(0.5)
 			EffectsController.burst(Config.Palette.Orange, 18)
 		end

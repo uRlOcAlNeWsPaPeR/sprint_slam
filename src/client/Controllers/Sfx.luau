@@ -8,6 +8,27 @@ local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
 
 local Sfx = {}
 
+-- Loads every effect up front so the first dash or boost doesn't lag.
+function Sfx.preload()
+	local ContentProvider = game:GetService("ContentProvider")
+	local assets = {}
+	for _, id in Config.Sounds :: any do
+		if id ~= "" then
+			local sound = Instance.new("Sound")
+			sound.SoundId = "rbxassetid://" .. id
+			table.insert(assets, sound)
+		end
+	end
+	task.spawn(function()
+		pcall(function()
+			ContentProvider:PreloadAsync(assets)
+		end)
+		for _, sound in assets do
+			sound:Destroy()
+		end
+	end)
+end
+
 function Sfx.play(name: string, volume: number?, pitch: number?)
 	local id = (Config.Sounds :: any)[name]
 	if not id or id == "" then

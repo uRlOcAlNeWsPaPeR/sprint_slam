@@ -41,6 +41,7 @@ UIController.init(courses)
 ChallengeMenu.init(week, courses)
 RunController.init(week, courses, Lobby)
 MusicController.init()
+require(Controllers.Sfx).preload()
 InputController.Music:Connect(MusicController.toggleMute)
 TitleScreen.init(week)
 
