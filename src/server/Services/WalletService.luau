@@ -3,7 +3,8 @@
 -- Balances persist in a DataStore. Where DataStores are unavailable (an unpublished place
 -- in Studio), they last for the session, with one warning.
 
-local DataStoreService = game:GetService("DataStoreService")
+local SaveGuard = require(script.Parent.SaveGuard)
+local Storage = require(script.Parent.Storage)
 
 local WalletService = {}
 
@@ -26,13 +27,9 @@ local function disablePersistence(reason: any)
 end
 
 function WalletService.init()
-	local ok, result = pcall(function()
-		return DataStoreService:GetDataStore(STORE_NAME)
-	end)
-	if ok then
-		store = result
-	else
-		disablePersistence(result)
+	store = Storage.dataStore(STORE_NAME)
+	if not store then
+		disablePersistence("no data store")
 	end
 end
 
@@ -43,14 +40,19 @@ function WalletService.load(player: Player)
 	if not dataStore then
 		return
 	end
-	local ok, result = pcall(function()
+	local ok, result = Storage.retry(3, function()
 		return dataStore:GetAsync(key(player))
 	end)
 	if ok then
 		balances[player] = (balances[player] or 0) + (tonumber(result) or 0)
 	else
-		disablePersistence(result)
+		warn("[SprintSlam] Could not load coins for " .. player.Name .. ": " .. tostring(result))
 	end
+end
+
+-- Tests: stop talking to any store.
+function WalletService.disableSaving()
+	store = nil
 end
 
 function WalletService.get(player: Player): number
@@ -64,9 +66,10 @@ function WalletService.award(player: Player, amount: number): number
 	balances[player] = WalletService.get(player) + amount
 	local dataStore = store
 	if dataStore then
-		task.spawn(function()
-			local ok, err = pcall(function()
-				dataStore:IncrementAsync(key(player), amount)
+		local saveKey = key(player)
+		SaveGuard.run(function()
+			local ok, err = Storage.retry(3, function()
+				return dataStore:IncrementAsync(saveKey, amount)
 			end)
 			if not ok then
 				warn("[SprintSlam] Could not save coins: " .. tostring(err))

@@ -9,8 +9,10 @@
 -- Boards live in OrderedDataStores (one per week × challenge × kind). Where DataStores are
 -- unavailable (an unpublished place) everything works from memory for the session.
 
-local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
+
+local SaveGuard = require(script.Parent.SaveGuard)
+local Storage = require(script.Parent.Storage)
 
 local BoardService = {}
 
@@ -47,10 +49,8 @@ local function ordered(weekId: string, index: number, kind: string): OrderedData
 	if existing then
 		return existing
 	end
-	local ok, result = pcall(function()
-		return DataStoreService:GetOrderedDataStore(name)
-	end)
-	if ok then
+	local result = Storage.orderedStore(name)
+	if result then
 		orderedStores[name] = result
 		return result
 	end
@@ -68,13 +68,11 @@ end
 -- Tests turn persistence off so they never touch real DataStores.
 function BoardService.setPersistence(enabled: boolean)
 	persistent = enabled
+	orderedStores = {}
 end
 
 function BoardService.init()
-	local ok, result = pcall(function()
-		return DataStoreService:GetDataStore(HOF_STORE)
-	end)
-	hofStore = if ok then result else nil
+	hofStore = Storage.dataStore(HOF_STORE)
 end
 
 local function nameFor(userId: number): string
@@ -105,7 +103,7 @@ function BoardService.loadPlayer(player: Player, weekId: string, count: number)
 		for _, kind in BoardService.Kinds do
 			local store = ordered(weekId, index, kind)
 			if store then
-				local ok, result = pcall(function()
+				local ok, result = Storage.retry(3, function()
 					return store:GetAsync(tostring(player.UserId))
 				end)
 				if ok then
@@ -157,9 +155,9 @@ function BoardService.submit(player: Player, weekId: string, index: number, scor
 			cache[key] = nil
 			local store = ordered(weekId, index, kind)
 			if store then
-				task.spawn(function()
-					local ok, err = pcall(function()
-						store:UpdateAsync(tostring(userId), function(saved)
+				SaveGuard.run(function()
+					local ok, err = Storage.retry(3, function()
+						return store:UpdateAsync(tostring(userId), function(saved)
 							if typeof(saved) == "number" and not better(kind, value, saved) then
 								return nil
 							end
@@ -167,7 +165,7 @@ function BoardService.submit(player: Player, weekId: string, index: number, scor
 						end)
 					end)
 					if not ok then
-						disable(err)
+						warn("[SprintSlam] Could not save a board result: " .. tostring(err))
 					end
 				end)
 			end

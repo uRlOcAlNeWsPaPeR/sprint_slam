@@ -4,7 +4,8 @@
 -- to improve their score and time. Persists per player per week in a DataStore; where
 -- DataStores are unavailable (an unpublished place), it lasts for the session.
 
-local DataStoreService = game:GetService("DataStoreService")
+local SaveGuard = require(script.Parent.SaveGuard)
+local Storage = require(script.Parent.Storage)
 
 local ProgressService = {}
 
@@ -22,10 +23,7 @@ end
 function ProgressService.init(currentWeekId: string, count: number)
 	weekId = currentWeekId
 	challengeCount = count
-	local ok, result = pcall(function()
-		return DataStoreService:GetDataStore(STORE_NAME)
-	end)
-	store = if ok then result else nil
+	store = Storage.dataStore(STORE_NAME)
 end
 
 -- Yields while the saved progress loads.
@@ -35,14 +33,19 @@ function ProgressService.load(player: Player)
 	if not dataStore then
 		return
 	end
-	local ok, result = pcall(function()
+	local ok, result = Storage.retry(3, function()
 		return dataStore:GetAsync(key(player))
 	end)
 	if ok then
 		cleared[player] = math.max(cleared[player] or 0, math.clamp(tonumber(result) or 0, 0, challengeCount))
 	else
-		store = nil -- stay session-only; the wallet service already warned
+		warn("[SprintSlam] Could not load progress for " .. player.Name .. ": " .. tostring(result))
 	end
+end
+
+-- Tests: stop talking to any store.
+function ProgressService.disableSaving()
+	store = nil
 end
 
 function ProgressService.clearedCount(player: Player): number
@@ -72,12 +75,16 @@ function ProgressService.recordClear(player: Player, index: number): boolean
 	cleared[player] = index
 	local dataStore = store
 	if dataStore then
-		task.spawn(function()
-			pcall(function()
-				dataStore:UpdateAsync(key(player), function(saved)
+		local saveKey = key(player)
+		SaveGuard.run(function()
+			local ok, err = Storage.retry(3, function()
+				return dataStore:UpdateAsync(saveKey, function(saved)
 					return math.max(tonumber(saved) or 0, index)
 				end)
 			end)
+			if not ok then
+				warn("[SprintSlam] Could not save progress: " .. tostring(err))
+			end
 		end)
 	end
 	return true
